@@ -9,7 +9,7 @@
 
 #define TRUE        1
 #define FALSE       0
-#define BUFFSIZE    1024
+#define BUFFSIZE    512
 
 void affiche_logo(void) {
     char buff[BUFFSIZE];
@@ -50,16 +50,20 @@ char *lireCmd (void) {
     }
 
     int i = 0;
-    char c;
-    while ((c = getchar()) != '\n' && i<256) {
+    unsigned char c;
+    while (((c = getchar()) != '\n') && (i<10)) {
         res[i] = c;
         i++;
     }
 
-    if (i>256) {
+    if (i >= 10) {
         fprintf(stderr, "La commande est trop longue !\n");
         free(res);
-        res = NULL;
+
+        // On vide le buffer si il contient encore qqch
+        while ((c = getchar()) != '\n');
+
+        return NULL;
     }
     else {
         res[i] = '\0';
@@ -80,20 +84,32 @@ void openTerm (void) {
         if (cmd != NULL)
             free(cmd);
 
-        printf("\norchestreur> ");
+        printf("\norchestrateur> ");
         cmd = lireCmd();
 
-        if (strcmp(cmd, "help") == 0) {
-            printf("There will be some help just right here !\n");
-        } 
+        if (cmd != NULL) {
 
-        else if (strcmp(cmd, "exit") == 0) {
-            quit = TRUE;
-        }
+            if (strcmp(cmd, "help") == 0) {
+                printf("There will be some help just right here !\n");
+           } 
 
-        else {
-            fprintf(stderr, "Commande %s non recconue, veuillez entrez une"
-                " autre commande\n", cmd);
+            else if (strcmp(cmd, "exit") == 0) {
+                quit = TRUE;
+            }
+
+            else if (strcmp(cmd, "clear") == 0) {
+                printf("Nettoyage...\n");
+                system("clear");
+            }
+            
+            else if (strcmp(cmd, "logo") == 0) {
+                affiche_logo();
+            }
+
+            else {
+                fprintf(stderr, "Commande %s non recconue, veuillez entrez une"
+                    " autre commande\n", cmd);
+            }
         }
         
     } while (!quit);
