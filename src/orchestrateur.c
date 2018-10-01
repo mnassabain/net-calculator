@@ -51,12 +51,12 @@ char *lireCmd (void) {
 
     int i = 0;
     unsigned char c;
-    while (((c = getchar()) != '\n') && (i<10)) {
+    while (((c = getchar()) != '\n') && (i<255)) {
         res[i] = c;
         i++;
     }
 
-    if (i >= 10) {
+    if (i >= 255) {
         fprintf(stderr, "La commande est trop longue !\n");
         free(res);
 
