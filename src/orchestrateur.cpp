@@ -7,9 +7,17 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define TRUE        1
-#define FALSE       0
-#define BUFFSIZE    512
+#include <string>
+#include <iostream>
+
+#define TRUE            1
+#define FALSE           0
+#define BUFFSIZE        512
+#define MAX_CMD_CHAR    256
+
+using namespace std;
+
+void usage (string pname);
 
 void affiche_logo(void) {
     char buff[BUFFSIZE];
@@ -42,85 +50,142 @@ void affiche_logo(void) {
     }
 }
 
-char *lireCmd (void) {
-    char *res = (char*)calloc(256, 1);
-    if (res == NULL) {
-        fprintf(stderr, "Error: can't allocate the memory w/ calloc\n");
-        exit(EXIT_FAILURE);
-    }
+string lireCmd (void) {
+    char res[MAX_CMD_CHAR];
+    string str;
 
-    int i = 0;
-    unsigned char c;
-    while (((c = getchar()) != '\n') && (i<255)) {
-        res[i] = c;
+    cin.getline(res, MAX_CMD_CHAR);
+
+    str = res;
+
+    return str;
+}
+
+// Cette fonction transforme une commande de calcul avec des arguments en string
+string argToString (string arg) {
+    int size = 0, i = 0;
+    string str;
+    size = arg.size();
+    char c;
+
+    while ((i<size) && ((c = arg.at(i)) != '(')) {
+        if (c == '%' || c == '+' || c == '-' || c == '*' || c == '/' || c == '!')
+            str.push_back(arg[i]);
+            
         i++;
     }
 
-    if (i >= 255) {
-        fprintf(stderr, "La commande est trop longue !\n");
-        free(res);
+    i++;
 
-        // On vide le buffer si il contient encore qqch
-        while ((c = getchar()) != '\n');
-
-        return NULL;
+    if ((str.empty()) || (i >= size)) {
+        cerr << "Syntaxe incorrecte, veuillez réessayer" << endl;
+        usage("./Orchestrateur");
+        return "";
     }
+
     else {
-        res[i] = '\0';
-    }
+      
+        // Séparateur
+        str.push_back(':');
 
-    return res;
+        int size_before = str.size();
+    
+        while(((i < size) && (c = arg.at(i)) != ')')) {
+            if ((c >= '0') && (c <= '9')) {
+            str.push_back(c);
+            }
+            else if (c == ',') {
+             str.push_back(':');
+            }
+            else if (c == ' ') { i++; continue; }
+            else {
+                cerr << "Mauvais argument" << endl;
+                usage("./Orchestrateur");
+                return "";
+            }
+
+            i++;
+        }
+
+        if (str.size() == size_before) {
+            cerr << "Argument incorrect" << endl;
+            usage("./Orchestrateur");
+            return "";
+        }
+
+
+        return str;
+    }
 }
 
 void openTerm (void) {
 
     affiche_logo();
 
-    char *cmd = NULL;
-    int quit = FALSE;
+    string cmd;
+    bool quit = false;
     
 
     do {
-        if (cmd != NULL)
-            free(cmd);
 
         printf("\norchestrateur> ");
         cmd = lireCmd();
 
-        if (cmd != NULL) {
+        if ((!cmd.empty()) && (cmd.size() <= MAX_CMD_CHAR)) {
 
-            if (strcmp(cmd, "help") == 0) {
+            if (cmd.compare("help") == 0) {
                 printf("There will be some help just right here !\n");
            } 
 
-            else if (strcmp(cmd, "exit") == 0) {
-                quit = TRUE;
+            else if (cmd.compare("exit") == 0) {
+                quit = true;
             }
 
-            else if (strcmp(cmd, "clear") == 0) {
+            else if (cmd.compare("clear") == 0) {
                 printf("Nettoyage...\n");
                 system("clear");
             }
             
-            else if (strcmp(cmd, "logo") == 0) {
+            else if (cmd.compare("logo") == 0) {
                 affiche_logo();
             }
 
             else {
-                fprintf(stderr, "Commande %s non recconue, veuillez entrez une"
-                    " autre commande\n", cmd);
+                string res;
+                res = argToString(cmd);
+                if (!res.empty()) {
+                    cout << res << endl;
+                }
+                res.clear();
             }
         }
+        // Pas de commande à rallonge
+        else if (cmd.size() > MAX_CMD_CHAR) {
+            cerr << "Erreur: La commande est trop longue !" << endl;
+        }
+
+        cmd.erase();
         
     } while (!quit);
 
-    if (cmd != NULL)
-        free(cmd);
-
 }
+
+void usage(string prog_name) {
+    cerr << "USAGE: " << prog_name << " <cmd> || <opérande>...(<a>,<b>,...)" << endl;
+}
+
 
 int main (int argc, char **argv) {
     openTerm();
 
-    exit(EXIT_SUCCESS);
+   /* string str = argToString("*+-/(4, 4, 8, 9, 4 4 4;)");
+
+    if (!str.empty()) {
+        cout << "Opérande(s) trouvée(s) : " << str << endl;
+    }
+    else {
+        cout << "rien trouvé.." << endl;
+    }*/
+
+    return 0;
 }
