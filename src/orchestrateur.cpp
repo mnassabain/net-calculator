@@ -43,7 +43,7 @@ void affiche_logo(void) {
 }
 
 char *lireCmd (void) {
-    char *res = calloc(256, 1);
+    char *res = (char*)calloc(256, 1);
     if (res == NULL) {
         fprintf(stderr, "Error: can't allocate the memory w/ calloc\n");
         exit(EXIT_FAILURE);
