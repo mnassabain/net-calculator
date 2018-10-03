@@ -178,14 +178,5 @@ void usage(string prog_name) {
 int main (int argc, char **argv) {
     openTerm();
 
-   /* string str = argToString("*+-/(4, 4, 8, 9, 4 4 4;)");
-
-    if (!str.empty()) {
-        cout << "Opérande(s) trouvée(s) : " << str << endl;
-    }
-    else {
-        cout << "rien trouvé.." << endl;
-    }*/
-
     return 0;
 }
