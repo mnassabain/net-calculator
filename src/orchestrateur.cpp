@@ -88,7 +88,7 @@ string argToString (string arg) {
         // Séparateur
         str.push_back(':');
 
-        int size_before = str.size();
+       unsigned int size_before = str.size();
     
         while(((i < size) && (c = arg.at(i)) != ')')) {
             if ((c >= '0') && (c <= '9')) {
@@ -155,6 +155,7 @@ void openTerm (void) {
                 res = argToString(cmd);
                 if (!res.empty()) {
                     cout << res << endl;
+                    // Appeler fct qui va envoyer vers un noeud de calcul disponible
                 }
                 res.clear();
             }
@@ -177,15 +178,6 @@ void usage(string prog_name) {
 
 int main (int argc, char **argv) {
     openTerm();
-
-   /* string str = argToString("*+-/(4, 4, 8, 9, 4 4 4;)");
-
-    if (!str.empty()) {
-        cout << "Opérande(s) trouvée(s) : " << str << endl;
-    }
-    else {
-        cout << "rien trouvé.." << endl;
-    }*/
 
     return 0;
 }
