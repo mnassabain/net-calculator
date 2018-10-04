@@ -14,7 +14,7 @@
 #include <string>
 
 
-#define BUFFER_SIZE     64
+#define BUFFER_SIZE     128
 
 #define SIGOK           SIGUSER1
 #define SIGNOTOK        SIGUSER2
@@ -142,6 +142,10 @@ void Noeud::pere()
     while(i--)
     {
         char buffer[BUFFER_SIZE];
+        memset(buffer, 0, BUFFER_SIZE);
+
+        memset(buffer, 0, BUFFER_SIZE);
+
         if (recv(mon_socket, buffer, BUFFER_SIZE, 0) == -1)
         {
             perror("recv:");
@@ -149,19 +153,16 @@ void Noeud::pere()
             close(mon_socket);
         }
 
-    std::string message(buffer);
+        std::string message(buffer);
+        std::cout << message << std::endl;
 
-    std::cout << message << std::endl;
+        char c;
+        int arg1, arg2;
+        std::stringstream stream(message);
+        stream >> c >> c >> arg1 >> c >> arg2;
 
-
-
-    char c;
-    int arg1, arg2;
-    std::stringstream stream(message);
-    stream >> c >> c >> arg1 >> c >> arg2;
-
-    int res = fonction(arg1, arg2);
-    std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
+        int res = fonction(arg1, arg2);
+        std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
     }
     
 
