@@ -112,6 +112,11 @@ string argToString (string arg) {
             usage("./Orchestrateur");
             return "";
         }
+        else if (c != ')') {
+            cerr << "Parenthèse fermante manquante" << endl;
+            usage("./Orchestrateur");
+            return "";
+        }
 
 
         return str;
