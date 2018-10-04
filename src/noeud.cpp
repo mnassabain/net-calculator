@@ -1,10 +1,55 @@
-#include "noeud.h"
-
 #include <iostream>
 #include <string>
+#include <sstream>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <sys/time.h>
+#include <string>
+
 
 #define BUFFER_SIZE     64
 
+#define SIGOK           SIGUSER1
+#define SIGNOTOK        SIGUSER2
+
+#define STATUS_OK       1
+#define STATUS_NOTOK    0
+
+#define ORCHESTRATEUR_PORT  8000
+#define PORT_NOEUD          8001
+
+
+
+
+class Noeud
+{
+    private:
+        int mon_socket;
+        pid_t pid_fils;
+
+        struct sockaddr_in adr_orchestrateur;
+
+        std::string profile;
+
+        void pere();
+        void fils();
+
+    public:
+        Noeud();
+        ~Noeud();
+
+        int fonction(int arg1, int arg2);
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
 Noeud::Noeud()
 {
     // profile pour identifier
@@ -78,7 +123,7 @@ void Noeud::pere()
     socklen_t adrlen;
 
     adresse.sin_family = AF_INET;
-    adresse.sin_port    = htons(MON_PORT);
+    adresse.sin_port    = htons(PORT_NOEUD) ;
     adresse.sin_addr.s_addr = htonl(INADDR_ANY);
 
     adrlen = sizeof(struct sockaddr_in);
@@ -107,6 +152,16 @@ void Noeud::pere()
     std::string message(buffer);
 
     std::cout << message << std::endl;
+
+
+
+    char c;
+    int arg1, arg2;
+    std::stringstream stream(message);
+    stream >> c >> c >> arg1 >> c >> arg2;
+
+    int res = fonction(arg1, arg2);
+    std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
     }
     
 
@@ -125,4 +180,16 @@ int Noeud::fonction(int arg1, int arg2)
     sleep(5);
 
     return arg1 + arg2;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+int main(int argc, char ** argv)
+{
+    Noeud noeud;
+
+    return 0;
 }
