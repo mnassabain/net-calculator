@@ -16,8 +16,8 @@
 
 #define BUFFER_SIZE     128
 
-#define SIGOK           SIGUSER1
-#define SIGNOTOK        SIGUSER2
+#define SIGOK           SIGUSR1
+#define SIGNOTOK        SIGUSR2
 
 #define STATUS_OK       1
 #define STATUS_NOTOK    0
@@ -26,6 +26,7 @@
 #define PORT_NOEUD          8001
 
 
+volatile sig_atomic_t status = STATUS_OK;
 
 
 class Noeud
@@ -35,6 +36,8 @@ class Noeud
         pid_t pid_fils;
 
         struct sockaddr_in adr_orchestrateur;
+
+        int status;
 
         std::string profile;
 
@@ -48,12 +51,26 @@ class Noeud
         int fonction(int arg1, int arg2);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/*
+void sighandlerOK(int sig)
+{
+    int status = STATUS_OK;
+}
 
+
+void sighandlerNOTOK(int sig)
+{
+    status = STATUS_NOTOK;
+}
+*/
 ////////////////////////////////////////////////////////////////////////////////
 Noeud::Noeud()
 {
     // profile pour identifier
     profile = "+:2";
+
+    status = STATUS_OK;
 
     // créer socket
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -97,6 +114,22 @@ Noeud::~Noeud()
 void Noeud::fils()
 {
     int status = STATUS_OK;
+
+    /*
+    if (signal(SIGOK, sighandlerOK))
+    {
+        perror("signal:");
+        close(mon_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    if (signal(SIGNOTOK, sighandlerNOTOK))
+    {
+        perror("signal:");
+        close(mon_socket);
+        exit(EXIT_FAILURE);
+    }
+    */
 
     while(status == STATUS_OK)
     {
@@ -153,6 +186,15 @@ void Noeud::pere()
             close(mon_socket);
         }
 
+        /* reçu message */
+        if (kill(pid_fils, SIGNOTOK) == -1)
+        {
+            perror("kill:");
+            close(mon_socket);
+            exit(EXIT_FAILURE);
+        }
+
+        /* decoder */
         std::string message(buffer);
         std::cout << message << std::endl;
 
@@ -163,6 +205,14 @@ void Noeud::pere()
 
         int res = fonction(arg1, arg2);
         std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
+
+        /* fini et libèré */
+        if (kill(pid_fils, SIGNOTOK) == -1)
+        {
+            perror("kill:");
+            close(mon_socket);
+            exit(EXIT_FAILURE);
+        }
     }
     
 
@@ -178,7 +228,7 @@ void Noeud::pere()
 
 int Noeud::fonction(int arg1, int arg2)
 {
-    sleep(5);
+    sleep(10);
 
     return arg1 + arg2;
 }
