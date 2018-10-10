@@ -6,6 +6,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
 
 #include <string>
 #include <iostream>
@@ -88,16 +92,20 @@ string argToString (string arg) {
         // Séparateur
         str.push_back(':');
 
-       unsigned int size_before = str.size();
+       unsigned int nbOperande = str.size() - 1;
+       unsigned int nbArgs = 0;
     
         while(((i < size) && (c = arg.at(i)) != ')')) {
             if ((c >= '0') && (c <= '9')) {
-            str.push_back(c);
+                str.push_back(c);
+                nbArgs++;
             }
             else if (c == ',') {
-             str.push_back(':');
+                str.push_back(':');
             }
+
             else if (c == ' ') { i++; continue; }
+
             else {
                 cerr << "Mauvais argument" << endl;
                 usage("./Orchestrateur");
@@ -107,14 +115,55 @@ string argToString (string arg) {
             i++;
         }
 
-        if (str.size() == size_before) {
+        // Si il n'y a aucun argument...
+        if (str.size() == nbOperande + 1) {
             cerr << "Argument incorrect" << endl;
             usage("./Orchestrateur");
             return "";
         }
 
-
         return str;
+    }
+}
+
+void searchAddrNode(string calc, struct sockaddr_in *addr) {
+    return;
+}
+
+void traitement_calcul(string calc) {
+    pid_t pid;
+
+    pid = fork();
+
+    switch(pid) {
+        case -1:
+            perror("cannot fork ");
+            exit(EXIT_FAILURE);
+            break;
+
+        case 0: // fils
+            struct sockaddr_in addrNode;
+            // On initialise l'@ à 0 comme ça si on a tjrs cette @ même après 
+            // la recherche, celà veut dire qu'aucun noeud n'est disponible
+            addrNode.sin_addr.s_addr = (inet_addr("0.0.0.0"));
+            // On cherche l'@ du noeud correspond au calcul que l'on veut faire
+            searchAddrNode(calc, &addrNode);
+
+            if (addrNode.sin_addr.s_addr == 0) {
+                cerr << "Aucun noeud n'est disponible pour votre calcul veuillez réessayer ultérieurement..." << endl;
+            }
+
+            exit(EXIT_SUCCESS);
+            break;
+            
+        default: // pere
+            int fils_status;
+            if (wait(&fils_status) == -1) {
+                perror("fils:");
+                exit(EXIT_FAILURE);
+            }
+
+            break;
     }
 }
 
@@ -154,8 +203,9 @@ void openTerm (void) {
                 string res;
                 res = argToString(cmd);
                 if (!res.empty()) {
-                    cout << res << endl;
+                    cout << "convert -> " << res << endl;
                     // Appeler fct qui va envoyer vers un noeud de calcul disponible
+                    traitement_calcul(res);
                 }
                 res.clear();
             }
