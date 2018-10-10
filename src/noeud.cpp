@@ -16,79 +16,76 @@
 
 #define BUFFER_SIZE     128
 
-#define SIGOK           SIGUSR1
-#define SIGNOTOK        SIGUSR2
-
-#define STATUS_OK       1
-#define STATUS_NOTOK    0
-
 #define ORCHESTRATEUR_PORT  8000
 #define PORT_NOEUD          8001
 
-
-volatile sig_atomic_t status = STATUS_OK;
 
 
 class Noeud
 {
     private:
+        std::string profile;
+        struct sockaddr_in adresse; // mon adresse
+        socklen_t adrlen;           // longueur de l'adresse
+
         int mon_socket;
         pid_t pid_fils;
 
         struct sockaddr_in adr_orchestrateur;
 
-        int status;
-
-        std::string profile;
-
         void pere();
         void fils();
 
-        // static sighandler
-        // static envoyer message
+        int fonction(int arg1, int arg2);
 
     public:
         Noeud();
         ~Noeud();
 
-        int fonction(int arg1, int arg2);
+        void creer_socket();
+        void trouver_orchestrateur();
+        void creer_fils();
+
+        void envoyer_message(std::string& message);
+
 };
 
-////////////////////////////////////////////////////////////////////////////////
-/*
-void sighandlerOK(int sig)
-{
-    int status = STATUS_OK;
-}
 
-
-void sighandlerNOTOK(int sig)
-{
-    status = STATUS_NOTOK;
-}
-*/
-////////////////////////////////////////////////////////////////////////////////
 Noeud::Noeud()
 {
-    // profile pour identifier
+    // profile de la forme "operation:nb_arguments"
     profile = "+:2";
 
-    status = STATUS_OK;
+    adresse.sin_family = AF_INET;
+    adresse.sin_port    = htons(PORT_NOEUD) ;
+    adresse.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    // créer socket
+    adrlen = sizeof(struct sockaddr_in);
+}
+
+
+void Noeud::creer_socket()
+{
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (mon_socket == -1)
     {
         perror("socket:");
         exit(EXIT_FAILURE);
     }
+}
 
+
+void Noeud::trouver_orchestrateur() 
+{
     // adresse de l'orchestrateur
     adr_orchestrateur.sin_family        = AF_INET;
     adr_orchestrateur.sin_port          = htons(ORCHESTRATEUR_PORT);
     adr_orchestrateur.sin_addr.s_addr   = INADDR_ANY;
+}
 
-    // fork
+
+void Noeud::creer_fils()
+{
     switch((pid_fils = fork()))
     {
         case -1:
@@ -114,35 +111,23 @@ Noeud::~Noeud()
 }
 
 
-void Noeud::fils()
+void Noeud::envoyer_message(std::string& message) 
 {
-    int status = STATUS_OK;
-
-    /*
-    if (signal(SIGOK, sighandlerOK))
-    {
-        perror("signal:");
-        close(mon_socket);
-        exit(EXIT_FAILURE);
-    }
-
-    if (signal(SIGNOTOK, sighandlerNOTOK))
-    {
-        perror("signal:");
-        close(mon_socket);
-        exit(EXIT_FAILURE);
-    }
-    */
-
-    while(status == STATUS_OK)
-    {
-        if (sendto(mon_socket, profile.c_str(), profile.size(), 0, 
-            (struct sockaddr*) &adr_orchestrateur,
-            sizeof(struct sockaddr_in)) == -1)
+    if (sendto(mon_socket, message.c_str(), message.size(), 0, 
+        (struct sockaddr*) &adr_orchestrateur,
+        sizeof(struct sockaddr_in)) == -1)
         {
             perror("sendto:");
             exit(EXIT_FAILURE);
         }
+}
+
+
+void Noeud::fils()
+{
+    while(1)
+    {
+        envoyer_message(profile);
 
         sleep(5);
     }
@@ -153,20 +138,8 @@ void Noeud::fils()
 
 void Noeud::pere()
 {
-    // pere doit être en ecoute
-    // preparer adresse locale
-    struct sockaddr_in adresse;
-    socklen_t adrlen;
-
-    adresse.sin_family = AF_INET;
-    adresse.sin_port    = htons(PORT_NOEUD) ;
-    adresse.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    adrlen = sizeof(struct sockaddr_in);
-
     /* attacher socket à l'adresse */
-    if (bind(mon_socket, (struct sockaddr*) &adresse,
-        adrlen) == -1)
+    if (bind(mon_socket, (struct sockaddr*) &adresse, adrlen) == -1)
     {
         perror("bind:");
         close(mon_socket);
@@ -180,24 +153,12 @@ void Noeud::pere()
         char buffer[BUFFER_SIZE];
         memset(buffer, 0, BUFFER_SIZE);
 
-        memset(buffer, 0, BUFFER_SIZE);
-
         if (recv(mon_socket, buffer, BUFFER_SIZE, 0) == -1)
         {
             perror("recv:");
             exit(EXIT_FAILURE);
             close(mon_socket);
         }
-
-        /* reçu message */
-        /*
-        if (kill(pid_fils, SIGNOTOK) == -1)
-        {
-            perror("kill:");
-            close(mon_socket);
-            exit(EXIT_FAILURE);
-        }
-        */
 
         /* decoder */
         std::string message(buffer);
@@ -209,17 +170,12 @@ void Noeud::pere()
         stream >> c >> c >> arg1 >> c >> arg2;
 
         int res = fonction(arg1, arg2);
-        std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
 
-        /* fini et libèré */
-        /*
-        if (kill(pid_fils, SIGNOTOK) == -1)
-        {
-            perror("kill:");
-            close(mon_socket);
-            exit(EXIT_FAILURE);
-        }
-        */
+        std::stringstream resultat_message;
+        resultat_message << message << " = " << res;
+        
+        std::string resultat_message_str = resultat_message.str();
+        envoyer_message(resultat_message_str);
     }
     
 
@@ -241,13 +197,16 @@ int Noeud::fonction(int arg1, int arg2)
 }
 
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 
 int main(int argc, char ** argv)
 {
     Noeud noeud;
+    noeud.creer_socket();
+    noeud.trouver_orchestrateur();
+
+    noeud.creer_fils();
 
     return 0;
 }
