@@ -14,10 +14,10 @@
 #include <string>
 
 
-#define BUFFER_SIZE     64
+#define BUFFER_SIZE     128
 
-#define SIGOK           SIGUSER1
-#define SIGNOTOK        SIGUSER2
+#define SIGOK           SIGUSR1
+#define SIGNOTOK        SIGUSR2
 
 #define STATUS_OK       1
 #define STATUS_NOTOK    0
@@ -26,6 +26,7 @@
 #define PORT_NOEUD          8001
 
 
+volatile sig_atomic_t status = STATUS_OK;
 
 
 class Noeud
@@ -36,10 +37,15 @@ class Noeud
 
         struct sockaddr_in adr_orchestrateur;
 
+        int status;
+
         std::string profile;
 
         void pere();
         void fils();
+
+        // static sighandler
+        // static envoyer message
 
     public:
         Noeud();
@@ -48,12 +54,26 @@ class Noeud
         int fonction(int arg1, int arg2);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/*
+void sighandlerOK(int sig)
+{
+    int status = STATUS_OK;
+}
 
+
+void sighandlerNOTOK(int sig)
+{
+    status = STATUS_NOTOK;
+}
+*/
 ////////////////////////////////////////////////////////////////////////////////
 Noeud::Noeud()
 {
     // profile pour identifier
     profile = "+:2";
+
+    status = STATUS_OK;
 
     // créer socket
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -97,6 +117,22 @@ Noeud::~Noeud()
 void Noeud::fils()
 {
     int status = STATUS_OK;
+
+    /*
+    if (signal(SIGOK, sighandlerOK))
+    {
+        perror("signal:");
+        close(mon_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    if (signal(SIGNOTOK, sighandlerNOTOK))
+    {
+        perror("signal:");
+        close(mon_socket);
+        exit(EXIT_FAILURE);
+    }
+    */
 
     while(status == STATUS_OK)
     {
@@ -142,6 +178,10 @@ void Noeud::pere()
     while(i--)
     {
         char buffer[BUFFER_SIZE];
+        memset(buffer, 0, BUFFER_SIZE);
+
+        memset(buffer, 0, BUFFER_SIZE);
+
         if (recv(mon_socket, buffer, BUFFER_SIZE, 0) == -1)
         {
             perror("recv:");
@@ -149,19 +189,37 @@ void Noeud::pere()
             close(mon_socket);
         }
 
-    std::string message(buffer);
+        /* reçu message */
+        /*
+        if (kill(pid_fils, SIGNOTOK) == -1)
+        {
+            perror("kill:");
+            close(mon_socket);
+            exit(EXIT_FAILURE);
+        }
+        */
 
-    std::cout << message << std::endl;
+        /* decoder */
+        std::string message(buffer);
+        std::cout << message << std::endl;
 
+        char c;
+        int arg1, arg2;
+        std::stringstream stream(message);
+        stream >> c >> c >> arg1 >> c >> arg2;
 
+        int res = fonction(arg1, arg2);
+        std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
 
-    char c;
-    int arg1, arg2;
-    std::stringstream stream(message);
-    stream >> c >> c >> arg1 >> c >> arg2;
-
-    int res = fonction(arg1, arg2);
-    std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
+        /* fini et libèré */
+        /*
+        if (kill(pid_fils, SIGNOTOK) == -1)
+        {
+            perror("kill:");
+            close(mon_socket);
+            exit(EXIT_FAILURE);
+        }
+        */
     }
     
 
