@@ -33,10 +33,12 @@ class Noeud
 
         struct sockaddr_in adr_orchestrateur;
 
+        int fonction(int arg1, int arg2);
+        void envoyer_message(std::string& message);
+
         void pere();
         void fils();
 
-        int fonction(int arg1, int arg2);
 
     public:
         Noeud();
@@ -44,10 +46,7 @@ class Noeud
 
         void creer_socket();
         void trouver_orchestrateur();
-        void creer_fils();
-
-        void envoyer_message(std::string& message);
-
+        void lancer_noeud();
 };
 
 
@@ -84,7 +83,7 @@ void Noeud::trouver_orchestrateur()
 }
 
 
-void Noeud::creer_fils()
+void Noeud::lancer_noeud()
 {
     switch((pid_fils = fork()))
     {
@@ -206,7 +205,7 @@ int main(int argc, char ** argv)
     noeud.creer_socket();
     noeud.trouver_orchestrateur();
 
-    noeud.creer_fils();
+    noeud.lancer_noeud();
 
     return 0;
 }
