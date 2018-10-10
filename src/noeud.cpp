@@ -44,6 +44,9 @@ class Noeud
         void pere();
         void fils();
 
+        // static sighandler
+        // static envoyer message
+
     public:
         Noeud();
         ~Noeud();
@@ -187,12 +190,14 @@ void Noeud::pere()
         }
 
         /* reçu message */
+        /*
         if (kill(pid_fils, SIGNOTOK) == -1)
         {
             perror("kill:");
             close(mon_socket);
             exit(EXIT_FAILURE);
         }
+        */
 
         /* decoder */
         std::string message(buffer);
@@ -207,12 +212,14 @@ void Noeud::pere()
         std::cout << c << arg1 << ", " << arg2 << " = " << res << std::endl;
 
         /* fini et libèré */
+        /*
         if (kill(pid_fils, SIGNOTOK) == -1)
         {
             perror("kill:");
             close(mon_socket);
             exit(EXIT_FAILURE);
         }
+        */
     }
     
 
@@ -228,7 +235,7 @@ void Noeud::pere()
 
 int Noeud::fonction(int arg1, int arg2)
 {
-    sleep(10);
+    sleep(5);
 
     return arg1 + arg2;
 }
