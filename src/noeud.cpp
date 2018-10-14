@@ -170,11 +170,11 @@ void Noeud::pere()
 
         int res = fonction(arg1, arg2);
 
-        std::stringstream resultat_message;
-        resultat_message << message << " = " << res;
-        
-        std::string resultat_message_str = resultat_message.str();
-        envoyer_message(resultat_message_str);
+        std::stringstream transformresult;
+        transformresult << res;
+
+        std::string result = transformresult.str();
+        envoyer_message(result);
     }
     
 
