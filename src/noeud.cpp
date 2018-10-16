@@ -35,6 +35,22 @@ bool FLAG_V = false;
 bool FLAG_6 = false;
 
 
+void printtime()
+{
+    time_t temps;
+    struct tm * timeinfo;
+    char buffer[80];
+
+    time(&temps);
+    timeinfo = localtime(&temps);
+    strftime(buffer, sizeof(buffer), "%H:%M:%S", timeinfo);
+    std::string str(buffer);
+    memset(buffer, '0', sizeof(buffer));
+    std::cout << "[" << str << "] ";
+}
+
+
+
 
 /* Structure du noeud */
 class Noeud
@@ -103,8 +119,18 @@ class Noeud
 */
 Noeud::Noeud()
 {
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Demarer noeud" << std::endl;
+    } 
     profile = "+:2";
 
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Setup adresse du noeud" << std::endl;
+    } 
     adresse.sin_family = AF_INET;
     adresse.sin_port    = htons(PORT_NOEUD) ;
     adresse.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -121,6 +147,11 @@ Noeud::Noeud()
  */
 int Noeud::fonction(int arg1, int arg2)
 {
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Demarer calcul" << std::endl;
+    } 
     sleep(TEMPS_CALCUL);
 
     return arg1 + arg2;
@@ -146,6 +177,11 @@ void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
  */
 void Noeud::creer_socket()
 {
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Créer socket" << std::endl;
+    } 
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (mon_socket == -1)
     {
@@ -164,6 +200,11 @@ void Noeud::creer_socket()
 void Noeud::trouver_orchestrateur() 
 {
     // adresse de l'orchestrateur
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Setup adresse orchestrateur" << std::endl;
+    } 
     adr_orchestrateur.sin_family        = AF_INET;
     adr_orchestrateur.sin_port          = htons(ORCHESTRATEUR_PORT);
     adr_orchestrateur.sin_addr.s_addr   = INADDR_ANY;
@@ -181,6 +222,11 @@ void Noeud::trouver_orchestrateur()
  */
 void Noeud::lancer_noeud()
 {
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Créer un fils" << std::endl;
+    } 
     switch(fork())
     {
         case -1:
@@ -245,6 +291,11 @@ void Noeud::fils()
 {
     while(1)
     {
+        if (FLAG_V)
+        {
+            printtime();
+            std::cout << "Ping à l'orchestrateur" << std::endl;
+        }
         envoyer_message(profile);
 
         sleep(TEMPS_SIGNAL);
@@ -267,6 +318,11 @@ void Noeud::fils()
 void Noeud::pere()
 {
     /* attacher socket à l'adresse */
+    if (FLAG_V)
+    {
+        printtime();
+        std::cout << "Bind socket" << std::endl;
+    }
     if (bind(mon_socket, (struct sockaddr*) &adresse, adrlen) == -1)
     {
         perror("bind:");
@@ -288,6 +344,7 @@ void Noeud::pere()
             exit(EXIT_FAILURE);
         }
 
+        if (FLAG_V) std::cout << "Message reçu de l'orchestrateur" << std::endl;
         std::string message(buffer);
         int arg1, arg2;
         decoder_commande(message, &arg1, &arg2);
@@ -298,6 +355,7 @@ void Noeud::pere()
         std::stringstream transformresult;
         transformresult << res;
 
+        if (FLAG_V) std::cout << "Envoyer resultat à l'orchestrateur" << std::endl;
         std::string result = transformresult.str();
         envoyer_message(result);
     }
