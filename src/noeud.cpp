@@ -30,8 +30,14 @@
 /* Le temps que le noeud doit attendre pour envoyer le calcul */
 #define TEMPS_CALCUL        5
 
+/* Variables globales qui indiquent si les options -v ou -6 sont activées*/
+bool FLAG_V = false;
+bool FLAG_6 = false;
+
+
 
 /* Structure du noeud */
+template <class T>
 class Noeud
 {
     private:
@@ -46,15 +52,15 @@ class Noeud
         /* La fonction qui decode la commande et place les arguments */
         void decoder_commande(std::string& message, int * arg1, int * arg2);
 
-        /* Structure contenant l'adresse du noeud ainsi que sa longueur */
-        struct sockaddr_in adresse;
-        socklen_t adrlen;           
-
         /* Socket du noeud */
         int mon_socket;
 
+        /* Structure contenant l'adresse du noeud ainsi que sa longueur */
+        T adresse;
+        socklen_t adrlen;           
+
         /* L'adresse de l'orchestrateur */
-        struct sockaddr_in adr_orchestrateur;
+        T adr_orchestrateur;
         socklen_t adrlen_orchestrateur;
 
         /* Fonction qui envoie un message vers l'orchestrateur */
@@ -65,10 +71,13 @@ class Noeud
         void pere();
         void fils();
 
+    protected:
+       
+
 
     public:
         /* Constructeur et deconstructeur */
-        Noeud();
+         Noeud();
         ~Noeud();
 
         /* Fonction qui crée le socket */
@@ -82,7 +91,6 @@ class Noeud
         void lancer_noeud();
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //      DEFINTION DES FONCTIONS
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,7 +102,8 @@ class Noeud
  * profile.
  * 
 */
-Noeud::Noeud()
+template <class T>
+Noeud<T>::Noeud()
 {
     profile = "+:2";
 
@@ -102,7 +111,7 @@ Noeud::Noeud()
     adresse.sin_port    = htons(PORT_NOEUD) ;
     adresse.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    adrlen = sizeof(struct sockaddr_in);
+    adrlen = sizeof(adresse);
 }
 
 
@@ -112,7 +121,8 @@ Noeud::Noeud()
  * L'opération du noeud de calcul.
  * 
  */
-int Noeud::fonction(int arg1, int arg2)
+template <class T>
+int Noeud<T>::fonction(int arg1, int arg2)
 {
     sleep(TEMPS_CALCUL);
 
@@ -121,7 +131,8 @@ int Noeud::fonction(int arg1, int arg2)
 
 
 /* La fonction qui decode la commande et place les arguments */
-void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
+template <class T>
+void Noeud<T>::decoder_commande(std::string& message, int * arg1, int * arg2)
 {
     std::cout << message << std::endl;
 
@@ -137,7 +148,8 @@ void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
  * une erreur on ferme le programme
  * 
  */
-void Noeud::creer_socket()
+template <class T>
+void Noeud<T>::creer_socket()
 {
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (mon_socket == -1)
@@ -154,14 +166,15 @@ void Noeud::creer_socket()
  * Remplit la structure contenant l'adresse de l'orchestrateur
  * 
  */
-void Noeud::trouver_orchestrateur() 
+template <class T>
+void Noeud<T>::trouver_orchestrateur() 
 {
     // adresse de l'orchestrateur
     adr_orchestrateur.sin_family        = AF_INET;
     adr_orchestrateur.sin_port          = htons(ORCHESTRATEUR_PORT);
     adr_orchestrateur.sin_addr.s_addr   = INADDR_ANY;
 
-    adrlen_orchestrateur = sizeof(struct sockaddr_in);
+    adrlen_orchestrateur = sizeof(adr_orchestrateur);
 }
 
 
@@ -172,7 +185,8 @@ void Noeud::trouver_orchestrateur()
  * TEMPS_SIGNAL secondes. Le père reste en écoute pour une instruction.
  * 
  */
-void Noeud::lancer_noeud()
+template <class T>
+void Noeud<T>::lancer_noeud()
 {
     switch(fork())
     {
@@ -196,7 +210,8 @@ void Noeud::lancer_noeud()
  * Ferme le socket
  *
  */
-Noeud::~Noeud()
+template <class T>
+Noeud<T>::~Noeud()
 {
     if (close(mon_socket) == -1)
     {
@@ -215,7 +230,8 @@ Noeud::~Noeud()
  * Envoie un message à l'orchestrateur
  * 
  */
-void Noeud::envoyer_message(std::string& message) 
+template <class T>
+void Noeud<T>::envoyer_message(std::string& message) 
 {
     if (sendto(mon_socket, message.c_str(), message.size(), 0, 
         (struct sockaddr*) &adr_orchestrateur,
@@ -234,7 +250,8 @@ void Noeud::envoyer_message(std::string& message)
  * l'orchestrateur contenant son profil chaque TEMPS_SIGNAL secondes.
  * 
  */
-void Noeud::fils()
+template <class T>
+void Noeud<T>::fils()
 {
     while(1)
     {
@@ -257,7 +274,8 @@ void Noeud::fils()
  * l'orchestrateur.
  * 
  */
-void Noeud::pere()
+template <class T>
+void Noeud<T>::pere()
 {
     /* attacher socket à l'adresse */
     if (bind(mon_socket, (struct sockaddr*) &adresse, adrlen) == -1)
@@ -311,7 +329,41 @@ void Noeud::pere()
 
 int main(int argc, char ** argv)
 {
-    Noeud noeud;
+    /* Gestion d'entrée & options */
+    if (argc < 1 || argc > 3)
+    {
+        std::cerr << "Usage: noeud [-v] [-6]" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    int option;
+    //int optind;
+    while ((option = getopt(argc, argv, "v6")) != -1)
+    {
+        switch(option)
+        {
+            case 'v':
+                FLAG_V = true;
+                break;
+
+            case '6':
+                FLAG_6 = true;
+                break;
+
+            default:
+                std::cerr << "Usage: noeud [-v] [-6]" << std::endl;
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if (optind != argc)
+    {
+        std::cerr << "Usage: noeud [-v] [-6]" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+
+    Noeud<struct sockaddr_in> noeud;
     noeud.creer_socket();
     noeud.trouver_orchestrateur();
 
