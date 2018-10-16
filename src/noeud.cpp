@@ -35,23 +35,6 @@ bool FLAG_V = false;
 bool FLAG_6 = false;
 
 
-void printtime()
-{
-    time_t temps;
-    struct tm * timeinfo;
-    char buffer[80];
-
-    time(&temps);
-    timeinfo = localtime(&temps);
-    strftime(buffer, sizeof(buffer), "%H:%M:%S", timeinfo);
-    std::string str(buffer);
-    memset(buffer, '0', sizeof(buffer));
-    std::cout << "[" << str << "] ";
-}
-
-
-
-
 /* Structure du noeud */
 class Noeud
 {
@@ -81,13 +64,13 @@ class Noeud
         /* Fonction qui envoie un message vers l'orchestrateur */
         void envoyer_message(std::string& message);
 
+        /* Fonctions auxiliaires */
+        void print_time();
+
         /* Fonctions que vont executer le processus père et fils respectivement 
         */
         void pere();
         void fils();
-
-    protected:
-       
 
 
     public:
@@ -121,14 +104,14 @@ Noeud::Noeud()
 {
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Demarer noeud" << std::endl;
     } 
     profile = "+:2";
 
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Setup adresse du noeud" << std::endl;
     } 
     adresse.sin_family = AF_INET;
@@ -149,7 +132,7 @@ int Noeud::fonction(int arg1, int arg2)
 {
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Demarer calcul" << std::endl;
     } 
     sleep(TEMPS_CALCUL);
@@ -179,7 +162,7 @@ void Noeud::creer_socket()
 {
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Créer socket" << std::endl;
     } 
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -202,7 +185,7 @@ void Noeud::trouver_orchestrateur()
     // adresse de l'orchestrateur
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Setup adresse orchestrateur" << std::endl;
     } 
     adr_orchestrateur.sin_family        = AF_INET;
@@ -224,7 +207,7 @@ void Noeud::lancer_noeud()
 {
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Créer un fils" << std::endl;
     } 
     switch(fork())
@@ -281,6 +264,27 @@ void Noeud::envoyer_message(std::string& message)
 
 
 /**
+ * Fonction: print_time
+ * 
+ * Affiche le temps courant sous forme [h:m:s]
+ * 
+ */
+void Noeud::print_time()
+{
+    time_t temps;
+    struct tm * timeinfo;
+    char buffer[80];
+
+    time(&temps);
+    timeinfo = localtime(&temps);
+    strftime(buffer, sizeof(buffer), "%H:%M:%S", timeinfo);
+    std::string str(buffer);
+    memset(buffer, '0', sizeof(buffer));
+    std::cout << "[" << str << "] ";
+}
+
+
+/**
  * Fonction: fils
  * 
  * La fonction que le fils va executer. Il va envoyer un message à 
@@ -293,7 +297,7 @@ void Noeud::fils()
     {
         if (FLAG_V)
         {
-            printtime();
+            print_time();
             std::cout << "Ping à l'orchestrateur" << std::endl;
         }
         envoyer_message(profile);
@@ -320,7 +324,7 @@ void Noeud::pere()
     /* attacher socket à l'adresse */
     if (FLAG_V)
     {
-        printtime();
+        print_time();
         std::cout << "Bind socket" << std::endl;
     }
     if (bind(mon_socket, (struct sockaddr*) &adresse, adrlen) == -1)
