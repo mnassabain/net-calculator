@@ -37,7 +37,6 @@ bool FLAG_6 = false;
 
 
 /* Structure du noeud */
-template <class T>
 class Noeud
 {
     private:
@@ -56,11 +55,11 @@ class Noeud
         int mon_socket;
 
         /* Structure contenant l'adresse du noeud ainsi que sa longueur */
-        T adresse;
+        struct sockaddr_in adresse;
         socklen_t adrlen;           
 
         /* L'adresse de l'orchestrateur */
-        T adr_orchestrateur;
+        struct sockaddr_in adr_orchestrateur;
         socklen_t adrlen_orchestrateur;
 
         /* Fonction qui envoie un message vers l'orchestrateur */
@@ -102,8 +101,7 @@ class Noeud
  * profile.
  * 
 */
-template <class T>
-Noeud<T>::Noeud()
+Noeud::Noeud()
 {
     profile = "+:2";
 
@@ -121,8 +119,7 @@ Noeud<T>::Noeud()
  * L'opération du noeud de calcul.
  * 
  */
-template <class T>
-int Noeud<T>::fonction(int arg1, int arg2)
+int Noeud::fonction(int arg1, int arg2)
 {
     sleep(TEMPS_CALCUL);
 
@@ -131,8 +128,7 @@ int Noeud<T>::fonction(int arg1, int arg2)
 
 
 /* La fonction qui decode la commande et place les arguments */
-template <class T>
-void Noeud<T>::decoder_commande(std::string& message, int * arg1, int * arg2)
+void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
 {
     std::cout << message << std::endl;
 
@@ -148,8 +144,7 @@ void Noeud<T>::decoder_commande(std::string& message, int * arg1, int * arg2)
  * une erreur on ferme le programme
  * 
  */
-template <class T>
-void Noeud<T>::creer_socket()
+void Noeud::creer_socket()
 {
     mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (mon_socket == -1)
@@ -166,8 +161,7 @@ void Noeud<T>::creer_socket()
  * Remplit la structure contenant l'adresse de l'orchestrateur
  * 
  */
-template <class T>
-void Noeud<T>::trouver_orchestrateur() 
+void Noeud::trouver_orchestrateur() 
 {
     // adresse de l'orchestrateur
     adr_orchestrateur.sin_family        = AF_INET;
@@ -185,8 +179,7 @@ void Noeud<T>::trouver_orchestrateur()
  * TEMPS_SIGNAL secondes. Le père reste en écoute pour une instruction.
  * 
  */
-template <class T>
-void Noeud<T>::lancer_noeud()
+void Noeud::lancer_noeud()
 {
     switch(fork())
     {
@@ -210,8 +203,7 @@ void Noeud<T>::lancer_noeud()
  * Ferme le socket
  *
  */
-template <class T>
-Noeud<T>::~Noeud()
+Noeud::~Noeud()
 {
     if (close(mon_socket) == -1)
     {
@@ -230,8 +222,7 @@ Noeud<T>::~Noeud()
  * Envoie un message à l'orchestrateur
  * 
  */
-template <class T>
-void Noeud<T>::envoyer_message(std::string& message) 
+void Noeud::envoyer_message(std::string& message) 
 {
     if (sendto(mon_socket, message.c_str(), message.size(), 0, 
         (struct sockaddr*) &adr_orchestrateur,
@@ -250,8 +241,7 @@ void Noeud<T>::envoyer_message(std::string& message)
  * l'orchestrateur contenant son profil chaque TEMPS_SIGNAL secondes.
  * 
  */
-template <class T>
-void Noeud<T>::fils()
+void Noeud::fils()
 {
     while(1)
     {
@@ -274,8 +264,7 @@ void Noeud<T>::fils()
  * l'orchestrateur.
  * 
  */
-template <class T>
-void Noeud<T>::pere()
+void Noeud::pere()
 {
     /* attacher socket à l'adresse */
     if (bind(mon_socket, (struct sockaddr*) &adresse, adrlen) == -1)
@@ -363,7 +352,7 @@ int main(int argc, char ** argv)
     }
 
 
-    Noeud<struct sockaddr_in> noeud;
+    Noeud noeud;
     noeud.creer_socket();
     noeud.trouver_orchestrateur();
 
