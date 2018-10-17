@@ -30,6 +30,9 @@
 /* Le temps que le noeud doit attendre pour envoyer le calcul */
 #define TEMPS_CALCUL        5
 
+
+#define STDIN               0
+
 /* Variables globales qui indiquent si les options -v ou -6 sont activées*/
 bool FLAG_V = false;
 bool FLAG_6 = false;
@@ -64,6 +67,9 @@ class Noeud
         /* Fonction qui envoie un message vers l'orchestrateur */
         void envoyer_message(std::string& message);
 
+        /* Fonction qui reçoit le message */
+        void recevoir_message(int * arg1, int * arg2);
+
         /* Fonctions auxiliaires */
         void print_time();
 
@@ -71,6 +77,17 @@ class Noeud
         */
         void pere();
         void fils();
+
+        /* Identifiant du processus fils */
+        pid_t pid_fils;
+
+        /* Dernier message reçu de l'orchestrateur */
+        std::string message;
+
+        /* Resultat */
+        int resultat;
+
+        static std::string int_to_string(int val);
 
 
     public:
@@ -232,7 +249,7 @@ void Noeud::lancer_noeud()
         print_time();
         std::cout << "Créer un fils" << std::endl;
     } 
-    switch(fork())
+    switch(pid_fils = fork())
     {
         case -1:
             perror("fork:");
@@ -282,6 +299,31 @@ void Noeud::envoyer_message(std::string& message)
             perror("sendto:");
             exit(EXIT_FAILURE);
         }
+}
+
+
+/**
+ * Fonction: recevoir_message
+ * 
+ */
+void Noeud::recevoir_message(int * arg1, int * arg2)
+{
+    char buffer[BUFFER_SIZE];
+    if (recv(mon_socket, buffer, BUFFER_SIZE, 0) == -1)
+    {
+        perror("recv");
+        close(mon_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    if (FLAG_V)
+    {
+        print_time();
+        std::cout << "Message reçu de l'orchestrateur" << std::endl;
+    }
+
+    message = std::string(buffer);
+    decoder_commande(message, arg1, arg2);
 }
 
 
@@ -363,36 +405,78 @@ void Noeud::pere()
         char buffer[BUFFER_SIZE];
         memset(buffer, 0, BUFFER_SIZE);
 
+        /*
         if (recv(mon_socket, buffer, BUFFER_SIZE, 0) == -1)
         {
             perror("recv:");
             close(mon_socket);
             exit(EXIT_FAILURE);
         }
+        */
 
-        if (FLAG_V) std::cout << "Message reçu de l'orchestrateur" << std::endl;
-        std::string message(buffer);
-        int arg1, arg2;
-        decoder_commande(message, &arg1, &arg2);
+        fd_set readfds;
+        fd_set readfds2;
+        int nfds;
 
-        int res = fonction(arg1, arg2);
+        FD_ZERO(&readfds);
+        FD_SET(mon_socket, &readfds);
+        FD_SET(STDIN, &readfds);
 
-        /* int -> string */
-        std::stringstream transformresult;
-        transformresult << res;
+        nfds = mon_socket + 1;
+        
+        int nr;
+        while(1)
+        {
+            readfds2 = readfds;
+            nr = select(nfds, &readfds2, 0, 0, NULL);
+            if (nr == -1)
+            {
+                perror("select");
+                exit(EXIT_FAILURE);
+            }
+            else
+            {
+                if (FD_ISSET(mon_socket, &readfds2))
+                {
+                    int arg1, arg2;
+                    recevoir_message(&arg1, &arg2);
 
-        if (FLAG_V) std::cout << "Envoyer resultat à l'orchestrateur" << std::endl;
-        std::string result = transformresult.str();
-        envoyer_message(result);
+                    int res = fonction(arg1, arg2);
+
+                    std::string resultat_string = int_to_string(res);
+
+                    if (FLAG_V)
+                    {
+                        print_time();
+                        std::cout << "Envoyer resultat à l'orchestrateur" << std::endl;
+                    }
+
+                    envoyer_message(resultat_string);
+                }
+
+                if (FD_ISSET(STDIN, &readfds2))
+                {
+                    if (FLAG_V)
+                    {   
+                        print_time();
+                        std::cout << "Quitter programme" << std::endl;
+                    }
+                    while((getchar() != '\n'));
+                    kill(pid_fils, SIGKILL);
+                    exit(EXIT_SUCCESS);
+                }
+            }
+        }
     }
-    
+}
 
-    int fils_status;
-    if (wait(&fils_status) == -1)
-    {
-        perror("fils:");
-        exit(EXIT_FAILURE);
-    }
+
+std::string Noeud::int_to_string(int val)
+{
+    std::stringstream transformresult;
+    transformresult << val;
+
+    return transformresult.str();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
