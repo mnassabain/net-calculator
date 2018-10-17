@@ -54,8 +54,8 @@ class Noeud
         int mon_socket;
 
         /* Structure contenant l'adresse du noeud ainsi que sa longueur */
-        struct sockaddr_in adresse;
-        socklen_t adrlen;           
+        struct sockaddr_storage adresse;
+        socklen_t adrlen;        
 
         /* L'adresse de l'orchestrateur */
         struct sockaddr_in adr_orchestrateur;
@@ -112,11 +112,24 @@ Noeud::Noeud()
     if (FLAG_V)
     {
         print_time();
-        std::cout << "Setup adresse du noeud" << std::endl;
-    } 
-    adresse.sin_family = AF_INET;
-    adresse.sin_port    = htons(PORT_NOEUD) ;
-    adresse.sin_addr.s_addr = htonl(INADDR_ANY);
+        std::cout << "Setup adresse du noeud " << (FLAG_6 ? "IPv6" : "IPv4") << std::endl;
+    }
+
+    /* Création adresse */
+    if (FLAG_6)
+    {
+        struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) &adresse;
+        adrv6->sin6_family = AF_INET6;
+        adrv6->sin6_port = htons(PORT_NOEUD);
+        adrv6->sin6_addr = in6addr_any;
+    }
+    else
+    {
+        struct sockaddr_in * adrv4 = (struct sockaddr_in*) &adresse;
+        adrv4->sin_family = AF_INET;
+        adrv4->sin_port = htons(PORT_NOEUD) ;
+        adrv4->sin_addr.s_addr = htonl(INADDR_ANY);
+    }
 
     adrlen = sizeof(adresse);
 }
@@ -163,9 +176,18 @@ void Noeud::creer_socket()
     if (FLAG_V)
     {
         print_time();
-        std::cout << "Créer socket" << std::endl;
+        std::cout << "Créer socket " << (FLAG_6 ? "IPv6" : "IPv4") << std::endl;
     } 
-    mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    
+    if (FLAG_6)
+    {
+        mon_socket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    }
+    else
+    {
+        mon_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    }
+
     if (mon_socket == -1)
     {
         perror("socket:");
@@ -329,7 +351,7 @@ void Noeud::pere()
     }
     if (bind(mon_socket, (struct sockaddr*) &adresse, adrlen) == -1)
     {
-        perror("bind:");
+        perror("bind");
         close(mon_socket);
         exit(EXIT_FAILURE);
     }
