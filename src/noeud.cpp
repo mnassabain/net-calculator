@@ -17,6 +17,10 @@
 //      STRUCTURES & MACROS
 ////////////////////////////////////////////////////////////////////////////////
 
+
+////////////////////////////////////////////////////////////////////////////////
+//      MARCROS & VARIABLES GLOBALES
+
 /* La taille du buffer lors la lecture du message de l'orchestrateur */
 #define BUFFER_SIZE         128
 
@@ -40,8 +44,9 @@
 bool FLAG_V = false;
 bool FLAG_6 = false;
 
+////////////////////////////////////////////////////////////////////////////////
+//      STRUCTURE DU NOEUD
 
-/* Structure du noeud */
 class Noeud
 {
     private:
@@ -116,6 +121,10 @@ class Noeud
 //      DEFINTION DES FONCTIONS
 ////////////////////////////////////////////////////////////////////////////////
 
+
+////////////////////////////////////////////////////////////////////////////////
+//      FONCTIONS IMPORTANTES
+
 /**
  * Fonction: Constructeur
  * 
@@ -137,7 +146,8 @@ Noeud::Noeud()
     if (FLAG_V)
     {
         print_time();
-        std::cout << "Setup adresse du noeud " << (FLAG_6 ? "IPv6" : "IPv4") << std::endl;
+        std::cout << "Setup adresse du noeud " << (FLAG_6 ? "IPv6" : "IPv4") 
+            << std::endl;
     }
 
     /* Création adresse */
@@ -181,14 +191,6 @@ int Noeud::fonction(int arg1, int arg2)
     return arg1 + arg2;
 }
 
-
-/* La fonction qui decode la commande et place les arguments */
-void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
-{
-    char c;
-    std::stringstream stream(message);
-    stream >> c >> c >> *arg1 >> c >> *arg2;
-}
 
 /**
  * Fonction: créer_socket
@@ -302,6 +304,9 @@ Noeud::~Noeud()
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+//      TRAITEMENT DES MESSAGES UDP
+
 /**
  * Fonction: envoyer_message
  * 
@@ -350,25 +355,105 @@ void Noeud::recevoir_message(int * arg1, int * arg2)
 
 
 /**
- * Fonction: print_time
+ * Fonction: decoder_commande
  * 
- * Affiche le temps courant sous forme [h:m:s]
+ * Decode la commande message et place les arguments
  * 
  */
-void Noeud::print_time()
+void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
 {
-    time_t temps;
-    struct tm * timeinfo;
-    char buffer[80];
-
-    time(&temps);
-    timeinfo = localtime(&temps);
-    strftime(buffer, sizeof(buffer), "%H:%M:%S", timeinfo);
-    std::string str(buffer);
-    memset(buffer, '0', sizeof(buffer));
-    std::cout << "[" << str << "] ";
+    char c;
+    std::stringstream stream(message);
+    stream >> c >> c >> *arg1 >> c >> *arg2;
 }
 
+
+/**
+ * Fonction: ecouter
+ * 
+ * Le pere du noeud va appeler cette fonction pour se mettre dans une boucle
+ * d'écoute de messages. Lors la réception d'une message le père va gérer
+ * le decodage, le calcul et le renvoi du résultat à l'orchestrateur.
+ * 
+ */
+void Noeud::ecouter()
+{
+    bool fini = false;
+    while(!fini)
+    {
+        /* buffer */
+        char buffer[BUFFER_SIZE];
+        memset(buffer, 0, BUFFER_SIZE);
+
+        /* descripteurs de fichiers à écouter */
+        fd_set readfds;
+        fd_set readfds2;
+
+        /* descripteur maximal + 1, pour la fonction select */
+        int nfds;
+
+        FD_ZERO(&readfds);
+        FD_SET(mon_socket, &readfds);
+        FD_SET(STDIN, &readfds);
+
+        nfds = mon_socket + 1;
+        
+        while(!fini)
+        {
+            readfds2 = readfds;
+            if (select(nfds, &readfds2, 0, 0, NULL) == -1)
+            {
+                perror("select");
+                exit(EXIT_FAILURE);
+            }
+            else
+            {
+                /* Si il y a quelque chose dans le buffer */
+                if (FD_ISSET(mon_socket, &readfds2))
+                {
+                    /* on reçoit le message et on le décode */
+                    int arg1, arg2;
+                    recevoir_message(&arg1, &arg2);
+
+                    /* on calcule le résultat */
+                    int res = fonction(arg1, arg2);
+                    std::string resultat_string = int_to_string(res);
+
+                    if (FLAG_V)
+                    {
+                        print_time();
+                        std::cout << "Envoyer resultat à l'orchestrateur" 
+                            << std::endl;
+                    }
+
+                    /* et on le renvoie */
+                    envoyer_message(resultat_string);
+                }
+
+                if (FD_ISSET(STDIN, &readfds2))
+                {
+                    /* si il y a quelque chose dans l'entrée standard on quitte 
+                     * le programme.
+                     */
+                    if (FLAG_V)
+                    {   
+                        print_time();
+                        std::cout << "Quitter programme" << std::endl;
+                    }
+                    fini = true;
+
+                    /* vider l'entrée standard, tuer le fils et sortir */
+                    while((getchar() != '\n'));
+                    kill(pid_fils, SIGKILL);
+                }
+            }
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//      PARTAGE DU TRAVAIL ENTRE FILS & PÈRE
 
 /**
  * Fonction: fils
@@ -392,74 +477,6 @@ void Noeud::fils()
     }
 
     exit(EXIT_SUCCESS);
-}
-
-
-void Noeud::ecouter()
-{
-    bool fini = false;
-    while(!fini)
-    {
-        char buffer[BUFFER_SIZE];
-        memset(buffer, 0, BUFFER_SIZE);
-
-        fd_set readfds;
-        fd_set readfds2;
-        int nfds;
-
-        FD_ZERO(&readfds);
-        FD_SET(mon_socket, &readfds);
-        FD_SET(STDIN, &readfds);
-
-        nfds = mon_socket + 1;
-        
-        int nr;
-        while(!fini)
-        {
-            readfds2 = readfds;
-            nr = select(nfds, &readfds2, 0, 0, NULL);
-            if (nr == -1)
-            {
-                perror("select");
-                exit(EXIT_FAILURE);
-            }
-            else
-            {
-                if (FD_ISSET(mon_socket, &readfds2))
-                {
-                    int arg1, arg2;
-                    recevoir_message(&arg1, &arg2);
-
-                    int res = fonction(arg1, arg2);
-
-                    std::string resultat_string = int_to_string(res);
-
-                    if (FLAG_V)
-                    {
-                        print_time();
-                        std::cout << "Envoyer resultat à l'orchestrateur" 
-                            << std::endl;
-                    }
-
-                    envoyer_message(resultat_string);
-                }
-
-                if (FD_ISSET(STDIN, &readfds2))
-                {
-                    if (FLAG_V)
-                    {   
-                        print_time();
-                        std::cout << "Quitter programme" << std::endl;
-                    }
-                    fini = true;
-
-                    /* vider l'entrée standard, tuer le fils et sortir */
-                    while((getchar() != '\n'));
-                    kill(pid_fils, SIGKILL);
-                }
-            }
-        }
-    }
 }
 
 
@@ -493,6 +510,36 @@ void Noeud::pere()
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+//      FONCTIONS AUXILIAIRES
+
+/**
+ * Fonction: print_time
+ * 
+ * Affiche le temps courant sous forme [h:m:s]
+ * 
+ */
+void Noeud::print_time()
+{
+    time_t temps;
+    struct tm * timeinfo;
+    char buffer[80];
+
+    time(&temps);
+    timeinfo = localtime(&temps);
+    strftime(buffer, sizeof(buffer), "%H:%M:%S", timeinfo);
+    std::string str(buffer);
+    memset(buffer, '0', sizeof(buffer));
+    std::cout << "[" << str << "] ";
+}
+
+
+/**
+ * Fonction: int_to_string
+ * 
+ * Transforme un entre en string
+ * 
+ */
 std::string Noeud::int_to_string(int val)
 {
     std::stringstream transformresult;
@@ -501,12 +548,15 @@ std::string Noeud::int_to_string(int val)
     return transformresult.str();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-//      MAIN
-////////////////////////////////////////////////////////////////////////////////
 
-
-int main(int argc, char ** argv)
+/**
+ * Fonction: traiter_arguments
+ * 
+ * Traite les arguments en utilisant argc et argv et active les flags. 
+ * Contrôle de l'appel au programme.
+ * 
+ */
+void traiter_arguments(int argc, char ** argv)
 {
     /* Gestion d'entrée & options */
     if (argc < 1 || argc > 3)
@@ -516,7 +566,6 @@ int main(int argc, char ** argv)
     }
 
     int option;
-    //int optind;
     while ((option = getopt(argc, argv, "v6")) != -1)
     {
         switch(option)
@@ -540,7 +589,17 @@ int main(int argc, char ** argv)
         std::cerr << "Usage: noeud [-v] [-6]" << std::endl;
         exit(EXIT_FAILURE);
     }
+}
 
+
+////////////////////////////////////////////////////////////////////////////////
+//      MAIN
+////////////////////////////////////////////////////////////////////////////////
+
+
+int main(int argc, char ** argv)
+{
+    traiter_arguments(argc, argv);
 
     Noeud noeud;
     noeud.creer_socket();
