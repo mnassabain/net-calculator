@@ -61,7 +61,7 @@ class Noeud
         socklen_t adrlen;        
 
         /* L'adresse de l'orchestrateur */
-        struct sockaddr_in adr_orchestrateur;
+        struct sockaddr_storage adr_orchestrateur;
         socklen_t adrlen_orchestrateur;
 
         /* Fonction qui envoie un message vers l'orchestrateur */
@@ -92,7 +92,7 @@ class Noeud
 
     public:
         /* Constructeur et deconstructeur */
-         Noeud();
+        Noeud();
         ~Noeud();
 
         /* Fonction qui crée le socket */
@@ -226,10 +226,22 @@ void Noeud::trouver_orchestrateur()
     {
         print_time();
         std::cout << "Setup adresse orchestrateur" << std::endl;
-    } 
-    adr_orchestrateur.sin_family        = AF_INET;
-    adr_orchestrateur.sin_port          = htons(ORCHESTRATEUR_PORT);
-    adr_orchestrateur.sin_addr.s_addr   = INADDR_ANY;
+    }
+
+    if (FLAG_6)
+    {
+        struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) &adr_orchestrateur;
+        adrv6->sin6_family = AF_INET6;
+        adrv6->sin6_port = htons(ORCHESTRATEUR_PORT);
+        adrv6->sin6_addr = in6addr_any;
+    }
+    else
+    {
+        struct sockaddr_in * adrv4 = (struct sockaddr_in*) &adr_orchestrateur;
+        adrv4->sin_family = AF_INET;
+        adrv4->sin_port = htons(ORCHESTRATEUR_PORT);
+        adrv4->sin_addr.s_addr = htonl(INADDR_ANY);
+    }
 
     adrlen_orchestrateur = sizeof(adr_orchestrateur);
 }
@@ -296,7 +308,7 @@ void Noeud::envoyer_message(std::string& message)
         (struct sockaddr*) &adr_orchestrateur,
         adrlen_orchestrateur) == -1)
         {
-            perror("sendto:");
+            perror("sendto:::");
             exit(EXIT_FAILURE);
         }
 }
@@ -404,15 +416,6 @@ void Noeud::pere()
     {
         char buffer[BUFFER_SIZE];
         memset(buffer, 0, BUFFER_SIZE);
-
-        /*
-        if (recv(mon_socket, buffer, BUFFER_SIZE, 0) == -1)
-        {
-            perror("recv:");
-            close(mon_socket);
-            exit(EXIT_FAILURE);
-        }
-        */
 
         fd_set readfds;
         fd_set readfds2;
