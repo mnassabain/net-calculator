@@ -30,8 +30,11 @@
 /* Le temps que le noeud doit attendre pour envoyer le calcul */
 #define TEMPS_CALCUL        5
 
-
+/* Entrée standard */
 #define STDIN               0
+
+/* temps maximum d'attendre pour renvoyer le calcul */
+#define MAX_SLEEP           50
 
 /* Variables globales qui indiquent si les options -v ou -6 sont activées*/
 bool FLAG_V = false;
@@ -66,6 +69,9 @@ class Noeud
 
         /* Fonction qui envoie un message vers l'orchestrateur */
         void envoyer_message(std::string& message);
+
+        /* Se mettre en écoute pour recevoir un message */
+        void ecouter();
 
         /* Fonction qui reçoit le message */
         void recevoir_message(int * arg1, int * arg2);
@@ -119,12 +125,14 @@ class Noeud
 */
 Noeud::Noeud()
 {
+    /* Profile de forme "operation: nb_arguments" */
+    profile = "+:2";
+
     if (FLAG_V)
     {
         print_time();
         std::cout << "Demarer noeud" << std::endl;
     } 
-    profile = "+:2";
 
     if (FLAG_V)
     {
@@ -160,12 +168,15 @@ Noeud::Noeud()
  */
 int Noeud::fonction(int arg1, int arg2)
 {
+    int sleep_time = rand() % MAX_SLEEP;
+
     if (FLAG_V)
     {
         print_time();
-        std::cout << "Demarer calcul" << std::endl;
-    } 
-    sleep(TEMPS_CALCUL);
+        std::cout << "Demarer calcul, durée = " << sleep_time << std::endl;
+    }
+    
+    sleep(sleep_time);
 
     return arg1 + arg2;
 }
@@ -174,8 +185,6 @@ int Noeud::fonction(int arg1, int arg2)
 /* La fonction qui decode la commande et place les arguments */
 void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
 {
-    std::cout << message << std::endl;
-
     char c;
     std::stringstream stream(message);
     stream >> c >> c >> *arg1 >> c >> *arg2;
@@ -207,7 +216,7 @@ void Noeud::creer_socket()
 
     if (mon_socket == -1)
     {
-        perror("socket:");
+        perror("socket");
         exit(EXIT_FAILURE);
     }
 }
@@ -264,7 +273,7 @@ void Noeud::lancer_noeud()
     switch(pid_fils = fork())
     {
         case -1:
-            perror("fork:");
+            perror("fork");
             close(mon_socket);
             exit(EXIT_FAILURE);
 
@@ -287,7 +296,7 @@ Noeud::~Noeud()
 {
     if (close(mon_socket) == -1)
     {
-        perror("close:");
+        perror("close");
         exit(EXIT_FAILURE);
     }
 }
@@ -308,7 +317,7 @@ void Noeud::envoyer_message(std::string& message)
         (struct sockaddr*) &adr_orchestrateur,
         adrlen_orchestrateur) == -1)
         {
-            perror("sendto:::");
+            perror("sendto");
             exit(EXIT_FAILURE);
         }
 }
@@ -328,13 +337,14 @@ void Noeud::recevoir_message(int * arg1, int * arg2)
         exit(EXIT_FAILURE);
     }
 
+    message = std::string(buffer);
+
     if (FLAG_V)
     {
         print_time();
-        std::cout << "Message reçu de l'orchestrateur" << std::endl;
+        std::cout << "Message reçu de l'orchestrateur: \"" << message << "\"" << std::endl;
     }
 
-    message = std::string(buffer);
     decoder_commande(message, arg1, arg2);
 }
 
@@ -385,6 +395,74 @@ void Noeud::fils()
 }
 
 
+void Noeud::ecouter()
+{
+    bool fini = false;
+    while(!fini)
+    {
+        char buffer[BUFFER_SIZE];
+        memset(buffer, 0, BUFFER_SIZE);
+
+        fd_set readfds;
+        fd_set readfds2;
+        int nfds;
+
+        FD_ZERO(&readfds);
+        FD_SET(mon_socket, &readfds);
+        FD_SET(STDIN, &readfds);
+
+        nfds = mon_socket + 1;
+        
+        int nr;
+        while(!fini)
+        {
+            readfds2 = readfds;
+            nr = select(nfds, &readfds2, 0, 0, NULL);
+            if (nr == -1)
+            {
+                perror("select");
+                exit(EXIT_FAILURE);
+            }
+            else
+            {
+                if (FD_ISSET(mon_socket, &readfds2))
+                {
+                    int arg1, arg2;
+                    recevoir_message(&arg1, &arg2);
+
+                    int res = fonction(arg1, arg2);
+
+                    std::string resultat_string = int_to_string(res);
+
+                    if (FLAG_V)
+                    {
+                        print_time();
+                        std::cout << "Envoyer resultat à l'orchestrateur" 
+                            << std::endl;
+                    }
+
+                    envoyer_message(resultat_string);
+                }
+
+                if (FD_ISSET(STDIN, &readfds2))
+                {
+                    if (FLAG_V)
+                    {   
+                        print_time();
+                        std::cout << "Quitter programme" << std::endl;
+                    }
+                    fini = true;
+
+                    /* vider l'entrée standard, tuer le fils et sortir */
+                    while((getchar() != '\n'));
+                    kill(pid_fils, SIGKILL);
+                }
+            }
+        }
+    }
+}
+
+
 /**
  * Fonction: pere
  * 
@@ -411,66 +489,7 @@ void Noeud::pere()
     }
 
     /* recevoir message */
-    int i = 3;
-    while(i--)
-    {
-        char buffer[BUFFER_SIZE];
-        memset(buffer, 0, BUFFER_SIZE);
-
-        fd_set readfds;
-        fd_set readfds2;
-        int nfds;
-
-        FD_ZERO(&readfds);
-        FD_SET(mon_socket, &readfds);
-        FD_SET(STDIN, &readfds);
-
-        nfds = mon_socket + 1;
-        
-        int nr;
-        while(1)
-        {
-            readfds2 = readfds;
-            nr = select(nfds, &readfds2, 0, 0, NULL);
-            if (nr == -1)
-            {
-                perror("select");
-                exit(EXIT_FAILURE);
-            }
-            else
-            {
-                if (FD_ISSET(mon_socket, &readfds2))
-                {
-                    int arg1, arg2;
-                    recevoir_message(&arg1, &arg2);
-
-                    int res = fonction(arg1, arg2);
-
-                    std::string resultat_string = int_to_string(res);
-
-                    if (FLAG_V)
-                    {
-                        print_time();
-                        std::cout << "Envoyer resultat à l'orchestrateur" << std::endl;
-                    }
-
-                    envoyer_message(resultat_string);
-                }
-
-                if (FD_ISSET(STDIN, &readfds2))
-                {
-                    if (FLAG_V)
-                    {   
-                        print_time();
-                        std::cout << "Quitter programme" << std::endl;
-                    }
-                    while((getchar() != '\n'));
-                    kill(pid_fils, SIGKILL);
-                    exit(EXIT_SUCCESS);
-                }
-            }
-        }
-    }
+    ecouter();
 }
 
 
