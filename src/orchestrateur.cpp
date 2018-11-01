@@ -1,29 +1,72 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/shm.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/wait.h>
+#include "orchestrateur.h"
 
-#include <string>
-#include <iostream>
+#define BUFFSIZE    1024
+#define STDINFD     0
+#define PORT        2080
 
-#define TRUE            1
-#define FALSE           0
-#define BUFFSIZE        512
-#define MAX_CMD_CHAR    256
+Node::Node() {
+    command = "";
+    operations = "";
+    state = false;
+}
 
-using namespace std;
+Node::Node(struct sockaddr_in ad, int nb, string op) {
+    addr = ad;
+    nbArg = nb;
+    state = true;
+    operations = op;
 
-void usage (string pname);
+    this->setState(true);
 
-void affiche_logo(void) {
+    this->lastHello = time(NULL);
+}
+
+
+/*
+ * spec est de la forme "+:2" pour l'addition par exemple
+ */
+Node::Node(struct sockaddr_in addr, string spec) { 
+    char op;
+    char c;
+    int nbarg;
+
+    stringstream stream(spec);
+
+    // Décomposition de la chaine avec un stream
+    stream >> op >> c >> nbarg;
+
+    // Création du noeud
+    this->nbArg = nbarg;
+    this->operations.push_back(op);
+
+    this->addr = addr;
+
+    this->setState(true);
+
+    this->lastHello = time(NULL);
+}
+
+struct sockaddr_in Node::getAddr(void) {
+    return this->addr;
+}
+
+string Node::getOp(void) {
+    return this->operations;
+}
+
+void Node::setCommand(string cmd) {
+    this->command = cmd;
+}
+
+void Node::setState(bool newState) {
+    this->state = newState;
+}
+
+bool Node::getState(void) { return this->state; }
+
+string Node::getCommand() { return this->command; }
+
+void Orchestrateur::afficheLogo(void) {
     char buff[BUFFSIZE];
     int bufflen = 0;
 
@@ -51,23 +94,43 @@ void affiche_logo(void) {
     if (close(fd) < 0) {
         perror("closing the logo file ");
         exit(EXIT_FAILURE);
+    }    
+}
+
+void Orchestrateur::gestionNoeud(struct sockaddr_in addr, string cmd) {
+    Node n(addr, cmd);
+    Node *res;
+    if (((res = this->findNode(n)) != NULL)) {
+        if (res->getState()) { // Le noeud est sensé être disponible...
+
+            // On met à jour l'heure de son dernier hello
+            res->lastHello = time(NULL);
+        }
+        else {
+            // Fin d'un calcul !
+            char *buf = (char *) malloc(BUFFSIZE);
+
+            if (buf == NULL) {
+               fprintf(stderr, "Error: impossible to allocate the buffer for reception\n");
+                exit(EXIT_FAILURE);
+            }
+
+            res->setState(true);
+            res->lastHello = time(NULL);
+
+            cout << endl << endl << "@" << inet_ntoa(res->getAddr().sin_addr) << ":" << ntohs(res->getAddr().sin_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
+
+            cout << endl << "orchestrateur> " << flush;
+        }
+    }
+    else {
+        // Le noeud n'existe pas, on l'ajoute !
+        this->nodeTab.push_back(n);
     }
 }
 
-string lireCmd (void) {
-    char res[MAX_CMD_CHAR];
-    string str;
-
-    cin.getline(res, MAX_CMD_CHAR);
-
-    str = res;
-
-    return str;
-}
-
-// Cette fonction transforme une commande de calcul avec des arguments en string
-string argToString (string arg) {
-    int size = 0, i = 0;
+string Orchestrateur::argToStr(string arg) {
+int size = 0, i = 0;
     string str;
     size = arg.size();
     char c;
@@ -83,7 +146,7 @@ string argToString (string arg) {
 
     if ((str.empty()) || (i >= size)) {
         cerr << "Syntaxe incorrecte, veuillez réessayer" << endl;
-        usage("./Orchestrateur");
+        Orchestrateur::usage("./Orchestrateur");
         return "";
     }
 
@@ -115,7 +178,7 @@ string argToString (string arg) {
             i++;
         }
 
-        // Si il n'y a aucun argument...
+        // S'il n'y a aucun argument...
         if (str.size() == nbOperande + 1) {
             cerr << "Argument incorrect" << endl;
             usage("./Orchestrateur");
@@ -126,108 +189,278 @@ string argToString (string arg) {
     }
 }
 
-void searchAddrNode(string calc, struct sockaddr_in *addr) {
-    return;
+void Orchestrateur::usage(string pname) {
+    cerr << "USAGE: " << pname << " <cmd> || <opérande>...(<a>,<b>,...)" << endl;
 }
 
-void traitement_calcul(string calc) {
-    pid_t pid;
+void Orchestrateur::addNode(Node n) {
+    this->nodeTab.push_back(n);
+}
 
-    pid = fork();
+int Orchestrateur::maxFd(void) {
+    int max = 0;
 
-    switch(pid) {
-        case -1:
-            perror("cannot fork ");
-            exit(EXIT_FAILURE);
-            break;
+    // On regarde le fd max 
+    if (max < this->socketFd) {
+        max = this->socketFd;
+    }
 
-        case 0: // fils
-            struct sockaddr_in addrNode;
-            // On initialise l'@ à 0 comme ça si on a tjrs cette @ même après 
-            // la recherche, celà veut dire qu'aucun noeud n'est disponible
-            addrNode.sin_addr.s_addr = (inet_addr("0.0.0.0"));
-            // On cherche l'@ du noeud correspond au calcul que l'on veut faire
-            searchAddrNode(calc, &addrNode);
+    return max;
+}
 
-            if (addrNode.sin_addr.s_addr == 0) {
-                cerr << "Aucun noeud n'est disponible pour votre calcul veuillez réessayer ultérieurement..." << endl;
-            }
+void Orchestrateur::initAddr(void) {
 
-            exit(EXIT_SUCCESS);
-            break;
-            
-        default: // pere
-            int fils_status;
-            if (wait(&fils_status) == -1) {
-                perror("fils:");
-                exit(EXIT_FAILURE);
-            }
+    // Initialisation de l'@
+    this->addr.sin_family = AF_INET;
+    this->addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    this->addr.sin_port = htons(PORT);
 
-            break;
+    this->port = PORT;
+
+    // On crée un socket
+    if((socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+        perror("socket ");
+        exit(EXIT_FAILURE);
+    }
+    
+    // On relie l'@ au socket
+    if ((bind(socketFd, (struct sockaddr*) &addr, sizeof(addr))) == -1) {
+		perror("bind ");
+		exit(EXIT_FAILURE);
+	}
+
+    this->socketFd = socketFd;
+
+    cout << "Hey my @ is " << inet_ntoa(this->addr.sin_addr) <<
+    " and my port is " << ntohs(this->addr.sin_port) << endl;
+}
+
+Node* Orchestrateur::findNode(Node n) {
+    int size = this->nodeTab.size();
+    int i;
+    Node *ptr = NULL;
+
+    // parcours de la liste de noeuds de l'orchstrateur
+    for(i=0 ; i<size ; i++) {
+        if ((this->nodeTab[i].getAddr().sin_addr.s_addr == n.getAddr().sin_addr.s_addr)
+        && (this->nodeTab[i].getAddr().sin_port == n.getAddr().sin_port)) {
+            ptr = &this->nodeTab[i];
+        }
+    }
+
+    return ptr;
+}
+
+void Orchestrateur::initFdSet(fd_set *set) {
+    if (set == NULL) {
+        fprintf(stderr, "Impossible d'initialiser un ensemble\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Il ne faut pas oublier le fd de l'orch..
+    FD_SET(this->socketFd, set);
+    cout << this->socketFd << " added" << endl;
+
+    // On rajoute l'entrée std
+    FD_SET(STDINFD, set);
+}
+
+void Orchestrateur::updateAllNodes(void) {
+    int i;
+    int size = this->nodeTab.size();
+
+    for(i=0 ; i<size ; i++) {
+        time_t cur_time = time(NULL);
+        
+        // Si cela fait plus de 10 sec que nous n'avons pas reçu de nouvelles...
+        if (((cur_time - this->nodeTab[i].lastHello) > 10) && this->nodeTab[i].getState()) {
+            this->nodeTab.erase(this->nodeTab.begin() + i);
+        }
     }
 }
 
-void openTerm (void) {
+void Orchestrateur::displayNodeVec(void) {
+    int size = this->nodeTab.size();
+    int i;
 
-    affiche_logo();
+    cout << "\nListe des NOEUDS" << endl;
 
-    string cmd;
+    cout << "******************************************************************\n" << endl;
+
+    for(i=0 ; i<size ; i++) {
+        cout << "@ = " << inet_ntoa(nodeTab[i].getAddr().sin_addr) << " ; Port = " << ntohs(nodeTab[i].getAddr().sin_port) << 
+        " ; Operation = " << nodeTab[i].getOp() << " ; Time = " << time(NULL) - nodeTab[i].lastHello << endl;
+    }
+
+    if (size == 0) {
+        cout << "La liste de noeud est vide pour le moment !" << endl;
+        cout << "Pour ajouter un noeud -> @ = " << inet_ntoa(this->addr.sin_addr) << " Port -> " << this->port << endl;
+    }
+
+    cout << "\n******************************************************************\n" << endl;
+}
+
+/* ATTENTION
+ * Précondition : cmd doit être de la bonne forme !
+ */
+void Orchestrateur::traiteCmd(string cmd, string calc) { 
+    string op;
+    int i = 0;
+
+    while(cmd[i] != ':') {
+        op.push_back(cmd[i]);
+        i++;
+    }
+
+    int size = this->nodeTab.size();
+
+    i = 0;
+
+    while (i<size) {
+        if ((op.compare(this->nodeTab[i].getOp()) == 0) && (this->nodeTab[i].getState())) { // On a trouvé le noeud
+            if ((sendto(socketFd, cmd.c_str(), cmd.size(), 0, (struct sockaddr*) &(this->nodeTab[i].addr), sizeof(struct sockaddr_in))) < 0) {
+		        perror("send message ");
+		        exit(EXIT_FAILURE);
+	        }
+
+            this->nodeTab[i].setState(false);
+            this->nodeTab[i].setCommand(calc);
+
+            cout << "Caluling on " << inet_ntoa(this->nodeTab[i].getAddr().sin_addr) << ":" << ntohs(this->nodeTab[i].getAddr().sin_port) << endl;
+
+            break;
+        }
+        i++;
+    }
+
+    if (i >= size) {
+        cout << "Aucun noeud disponible pour calculer " << op << endl;
+    }
+}
+
+// Routine de l'orchestrateur...
+void Orchestrateur::openTerm(void) {
+
+    Orchestrateur::afficheLogo();
+
     bool quit = false;
-    
+    int i;
 
-    do {
+    // Initialisation pour select 
+    fd_set read_fds;
+    fd_set read_fds_tmp;
+    int retVal; // Val de retour de select
+    unsigned char c; // Pour traitement des commandes de l'utilisateur  
+    string buffer; // stocker une cmd de l'utilisateur
+    string calc; // stocke un calcul sous la bonne syntaxe
 
-        printf("\norchestrateur> ");
-        cmd = lireCmd();
+    struct sockaddr_in addrFound;
 
-        if ((!cmd.empty()) && (cmd.size() <= MAX_CMD_CHAR)) {
+/*******************************************************************************
+ * ATTRIBUTION D'UNE @ POUR L'ORCHESTRATEUR *
+ */
 
-            if (cmd.compare("help") == 0) {
-                printf("There will be some help just right here !\n");
-           } 
+    // On initialise l'@ et le socket de l'orchestrateur 
+    this->initAddr();
 
-            else if (cmd.compare("exit") == 0) {
-                quit = true;
-            }
+    FD_ZERO(&read_fds);
+    this->initFdSet(&read_fds);
 
-            else if (cmd.compare("clear") == 0) {
-                printf("Nettoyage...\n");
-                system("clear");
-            }
-            
-            else if (cmd.compare("logo") == 0) {
-                affiche_logo();
-            }
+    cout << "orchestrateur> " << flush;
 
-            else {
-                string res;
-                res = argToString(cmd);
-                if (!res.empty()) {
-                    cout << "convert -> " << res << endl;
-                    // Appeler fct qui va envoyer vers un noeud de calcul disponible
-                    traitement_calcul(res);
+    char msg[BUFFSIZE];
+    unsigned int addr_len = sizeof(struct sockaddr_in);
+
+    struct timeval tv;
+    struct timeval tv_tmp;
+
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+
+    while (quit != true) {
+        /* On fait un select pour gérer de manière 
+         * non bloquante les données reçues...
+         */
+        read_fds_tmp = read_fds;
+        tv_tmp = tv;
+        retVal = select(this->maxFd()+1, &read_fds_tmp, 0, 0, &tv_tmp);
+
+        if(retVal == -1) { // select a rencontré une erreur
+            perror("select ");
+            exit(EXIT_FAILURE);
+        }
+        else {
+            if(FD_ISSET(STDINFD, &read_fds_tmp)) {
+                buffer.erase();
+
+                i = 0;
+                
+                while ((c = getchar()) != '\n') {
+                    if (i>BUFFSIZE) {
+                        // On refuse les commandes trop longues...
+                        cerr << "La commande est trop longue !" << endl;
+                        break;  
+                    }
+
+                    buffer.push_back(c);
+                    i++;
                 }
-                res.clear();
+
+                if (i>=BUFFSIZE) {
+                    buffer = "";
+                }
+                else {
+
+                    if (buffer.compare("quit") == 0) {
+                        quit = true; // On quitte le terminal
+                        break;
+                    }
+                    else if (buffer.compare("clear") == 0) {
+                        system("clear");
+                    }
+                    else if (buffer.compare("logo") == 0) {
+                        Orchestrateur::afficheLogo();
+                    }
+                    else if (buffer.compare("nodes") == 0) {
+                        Orchestrateur::displayNodeVec();
+                    }
+                    else {
+                        calc = Orchestrateur::argToStr(buffer); // On donne une bonne syntaxe à la commande
+
+                        if (calc != "") {
+                            Orchestrateur::traiteCmd(calc, string(buffer));
+                        }
+                    }
+
+                    
+                }
+                cout << "orchestrateur> " << flush;
             }
+            else if (FD_ISSET(this->socketFd, &read_fds_tmp)) {
+                if ((recvfrom(this->socketFd, msg, BUFFSIZE, 0, (struct sockaddr*) &addrFound, &addr_len) == -1)) {
+					perror("message reception ");
+					exit(EXIT_FAILURE);
+				}
+                // Comment est le hello d'un noued ? => +:4
+                string spec(msg);
+
+                this->gestionNoeud(addrFound, spec);
+                
+            }
+
+            this->updateAllNodes();
         }
-        // Pas de commande à rallonge
-        else if (cmd.size() > MAX_CMD_CHAR) {
-            cerr << "Erreur: La commande est trop longue !" << endl;
-        }
-
-        cmd.erase();
-        
-    } while (!quit);
-
+    }
 }
-
-void usage(string prog_name) {
-    cerr << "USAGE: " << prog_name << " <cmd> || <opérande>...(<a>,<b>,...)" << endl;
-}
-
 
 int main (int argc, char **argv) {
-    openTerm();
 
-    return 0;
+   Orchestrateur orchest;
+   orchest.openTerm();
+
+    if (argc != 1) {
+        orchest.usage(argv[0]);
+    }
+
+    return 0;  
 }
