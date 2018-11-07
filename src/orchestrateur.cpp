@@ -478,10 +478,6 @@ void Orchestrateur::openTerm(void) {
 }
 
 int main (int argc, char **argv) {
-
-<<<<<<< HEAD
-    return 0;
-=======
    Orchestrateur orchest;
    orchest.openTerm();
 
@@ -490,5 +486,4 @@ int main (int argc, char **argv) {
     }
 
     return 0;  
->>>>>>> orchestrateur
 }
