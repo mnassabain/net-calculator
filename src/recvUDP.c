@@ -69,6 +69,8 @@ int main(int argc, char ** argv)
 
 		printf("Nouveau message de %s:%d (%lu caractères):\n%s\n",
 			adr_exp_str, exp_port, strlen(buffer), buffer);
+
+		memset(buffer, 0, BUFFER_SIZE);
 	}
 	close(mon_socket);
 
