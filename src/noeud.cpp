@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -38,7 +39,7 @@
 #define STDIN               0
 
 /* temps maximum d'attendre pour renvoyer le calcul */
-#define MAX_SLEEP           50
+#define MAX_SLEEP           2
 
 /* Variables globales qui indiquent si les options -v ou -6 sont activées*/
 bool FLAG_V = false;
@@ -251,7 +252,7 @@ void Noeud::trouver_orchestrateur()
         struct sockaddr_in * adrv4 = (struct sockaddr_in*) &adr_orchestrateur;
         adrv4->sin_family = AF_INET;
         adrv4->sin_port = htons(ORCHESTRATEUR_PORT);
-        adrv4->sin_addr.s_addr = htonl(INADDR_ANY);
+        adrv4->sin_addr.s_addr = inet_addr("127.0.0.1");
     }
 
     adrlen_orchestrateur = sizeof(adr_orchestrateur);
@@ -418,6 +419,7 @@ void Noeud::ecouter()
                     /* on calcule le résultat */
                     int res = fonction(arg1, arg2);
                     std::string resultat_string = int_to_string(res);
+                    resultat_string.insert(0, ":");
 
                     if (FLAG_V)
                     {

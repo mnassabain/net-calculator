@@ -461,6 +461,7 @@ void Orchestrateur::openTerm(void) {
                 cout << "orchestrateur> " << flush;
             }
             else if (FD_ISSET(this->socketFd, &read_fds_tmp)) {
+                memset(msg, 0, sizeof(msg));
                 if ((recvfrom(this->socketFd, msg, BUFFSIZE, 0, (struct sockaddr*) &addrFound, &addr_len) == -1)) {
 					perror("message reception ");
 					exit(EXIT_FAILURE);
