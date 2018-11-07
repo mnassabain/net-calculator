@@ -2,7 +2,7 @@
 
 #define BUFFSIZE        1024
 #define STDINFD         0
-#define PORT            2080
+#define PORT            8000
 #define TEMPS_ATTENTE   10
 
 Node::Node() {
