@@ -26,7 +26,7 @@
 #define BUFFER_SIZE         128
 
 /* Le port du noeud et de l'orchestrateur respectivement */
-#define PORT_NOEUD          8001
+#define PORT_NOEUD          8002
 #define ORCHESTRATEUR_PORT  8000
 
 /* Le temps que le noeud attend pour envoyer son profil à l'orchestrateur */
@@ -136,7 +136,7 @@ class Noeud
 Noeud::Noeud()
 {
     /* Profile de forme "operation: nb_arguments" */
-    profile = "+:2";
+    profile = "-:2";
 
     if (FLAG_V)
     {
@@ -189,7 +189,7 @@ int Noeud::fonction(int arg1, int arg2)
     
     sleep(sleep_time);
 
-    return arg1 + arg2;
+    return arg1 - arg2;
 }
 
 
