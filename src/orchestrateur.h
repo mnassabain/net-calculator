@@ -30,8 +30,8 @@ class Node {
     public:
         // Constructeurs
         Node();
-        Node(struct sockaddr_in ad, int nb, string op);
-        Node(struct sockaddr_in addr, string spec);   
+        Node(struct sockaddr_storage ad, int nb, string op);
+        Node(struct sockaddr_storage addr, string spec);   
 
         // Change l'état d'un noeud
         void setState(bool newState);      
@@ -40,7 +40,7 @@ class Node {
         bool getState(void);
 
         // Retourne l'adresse d'un noeud
-        struct sockaddr_in getAddr(void);
+        struct sockaddr_storage * getAddr(void);
 
         // Retourne l'opération d'un noeud
         string getOp(void);
@@ -55,14 +55,16 @@ class Node {
         time_t lastHello;
 
         // @ du noeud
-        struct sockaddr_in addr;
+        //struct sockaddr_storage addr;
+        struct sockaddr_storage addr;
 };
 
 class Orchestrateur {
     private:
         vector<Node> nodeTab;
         int socketFd;
-        struct sockaddr_in addr;
+        //struct sockaddr_storage addr;
+        struct sockaddr_storage addr;
         short port;
         fd_set set;
 
@@ -71,7 +73,7 @@ class Orchestrateur {
         void afficheLogo(void);
 
         // Gère la liste des noeuds dans la routine
-        void gestionNoeud(struct sockaddr_in addr, string cmd);
+        void gestionNoeud(struct sockaddr_storage addr, string cmd);
 
         // Trouve un noeud dans la liste de tout les noeuds
         Node* findNode(Node n);

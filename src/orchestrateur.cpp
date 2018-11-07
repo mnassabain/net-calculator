@@ -5,13 +5,16 @@
 #define PORT            8000
 #define TEMPS_ATTENTE   10
 
+bool FLAG_6 = false;
+
+
 Node::Node() {
     command = "";
     operations = "";
     state = false;
 }
 
-Node::Node(struct sockaddr_in ad, int nb, string op) {
+Node::Node(struct sockaddr_storage ad, int nb, string op) {
     addr = ad;
     nbArg = nb;
     state = true;
@@ -26,7 +29,7 @@ Node::Node(struct sockaddr_in ad, int nb, string op) {
 /*
  * spec est de la forme "+:2" pour l'addition par exemple
  */
-Node::Node(struct sockaddr_in addr, string spec) { 
+Node::Node(struct sockaddr_storage addr, string spec) { 
     char op;
     char c;
     int nbarg;
@@ -47,8 +50,8 @@ Node::Node(struct sockaddr_in addr, string spec) {
     this->lastHello = time(NULL);
 }
 
-struct sockaddr_in Node::getAddr(void) {
-    return this->addr;
+struct sockaddr_storage * Node::getAddr(void) {
+    return &this->addr;
 }
 
 string Node::getOp(void) {
@@ -72,7 +75,7 @@ void Orchestrateur::afficheLogo(void) {
     int bufflen = 0;
 
     printf("Projet de réseaux et protocoles / L3-S5A 2018\n");
-    printf("NASSABIN Marco et WENDLING Nicolas - 2018\n");
+    printf("NASSABAIN Marco et WENDLING Nicolas - 2018\n");
 
     int fd = open("logo.txt", O_RDONLY);
     if (fd < 0) {
@@ -98,32 +101,10 @@ void Orchestrateur::afficheLogo(void) {
     }    
 }
 
-void Orchestrateur::gestionNoeud(struct sockaddr_in addr, string cmd) {
+void Orchestrateur::gestionNoeud(struct sockaddr_storage addr, string cmd) {
     Node n(addr, cmd);
-    Node *res;
+    Node *res = NULL;
     if (((res = this->findNode(n)) != NULL)) {
-       /* if (res->getState()) { // Le noeud est sensé être disponible...
-
-            // On met à jour l'heure de son dernier hello
-            res->lastHello = time(NULL);
-        }
-        else {
-            // Fin d'un calcul !
-            char *buf = (char *) malloc(BUFFSIZE);
-
-            if (buf == NULL) {
-               fprintf(stderr, "Error: impossible to allocate the buffer for reception\n");
-                exit(EXIT_FAILURE);
-            }
-
-            res->setState(true);
-            res->lastHello = time(NULL);
-
-            cout << endl << endl << "@" << inet_ntoa(res->getAddr().sin_addr) << ":" << ntohs(res->getAddr().sin_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
-
-            cout << endl << "orchestrateur> " << flush;
-        } */
-
         if (cmd[0] == ':') { // C'est un résultat !
             // Fin d'un calcul !
             cmd.erase(cmd.begin());
@@ -131,7 +112,18 @@ void Orchestrateur::gestionNoeud(struct sockaddr_in addr, string cmd) {
             res->setState(true);
             res->lastHello = time(NULL);
 
-            cout << endl << endl << "@" << inet_ntoa(res->getAddr().sin_addr) << ":" << ntohs(res->getAddr().sin_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
+            if (!FLAG_6)
+            {
+                struct sockaddr_in * adrv4 = (struct sockaddr_in*) res->getAddr();
+                cout << endl << endl << "@" << inet_ntoa(adrv4->sin_addr) << ":" << ntohs(adrv4->sin_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
+            }
+            else
+            {
+                struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) res->getAddr();
+                char buffer_adresse[BUFFSIZE];
+                inet_ntop(AF_INET6, adrv6, buffer_adresse, sizeof(struct sockaddr_storage));
+                cout << endl << endl << "@" << buffer_adresse << ":" << ntohs(adrv6->sin6_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
+            }
 
             cout << endl << "orchestrateur> " << flush;
         }
@@ -230,17 +222,55 @@ int Orchestrateur::maxFd(void) {
     return max;
 }
 
+
+bool compare_adresses6(struct in6_addr * a, struct in6_addr * b)
+{
+    int i;
+    for (i = 0; i < 16; i++)
+    {
+        if (a->s6_addr[i] != b->s6_addr[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 void Orchestrateur::initAddr(void) {
 
     // Initialisation de l'@
-    this->addr.sin_family = AF_INET;
-    this->addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    this->addr.sin_port = htons(PORT);
+    if (!FLAG_6)
+    {
+        struct sockaddr_in * adrv4 = (struct sockaddr_in*) &addr;
+        adrv4->sin_family = AF_INET;
+        adrv4->sin_addr.s_addr = htonl(INADDR_ANY);
+        adrv4->sin_port = htons(PORT);
+
+    }
+    else
+    {
+        struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) &addr;
+        adrv6->sin6_family = AF_INET6;
+        adrv6->sin6_addr = in6addr_any;
+        adrv6->sin6_port = htons(PORT);
+    }
 
     this->port = PORT;
 
     // On crée un socket
-    if((socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+    int family = 0;
+    if (!FLAG_6)
+    {
+        family = AF_INET;
+    }
+    else
+    {
+        family = AF_INET6;
+    }
+
+    if((socketFd = socket(family, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         perror("socket ");
         exit(EXIT_FAILURE);
     }
@@ -252,9 +282,21 @@ void Orchestrateur::initAddr(void) {
 	}
 
     this->socketFd = socketFd;
-
-    cout << "Hey my @ is " << inet_ntoa(this->addr.sin_addr) <<
-    " and my port is " << ntohs(this->addr.sin_port) << endl;
+    
+    if (!FLAG_6)
+    {
+        struct sockaddr_in * adrv4 = (struct sockaddr_in*) &this->addr;
+        cout << "Adresse: " << inet_ntoa(adrv4->sin_addr) <<
+            "; Port: " << ntohs(adrv4->sin_port) << endl;
+    }
+    else
+    {
+        struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) &this->addr;
+        char buffer_adresse[BUFFSIZE];
+        inet_ntop(AF_INET6, adrv6, buffer_adresse, sizeof(struct sockaddr_storage));
+        cout << "Adresse: " << buffer_adresse <<
+            "; Port: " << ntohs(adrv6->sin6_port) << endl;
+    }
 }
 
 Node* Orchestrateur::findNode(Node n) {
@@ -263,10 +305,30 @@ Node* Orchestrateur::findNode(Node n) {
     Node *ptr = NULL;
 
     // parcours de la liste de noeuds de l'orchstrateur
-    for(i=0 ; i<size ; i++) {
-        if ((this->nodeTab[i].getAddr().sin_addr.s_addr == n.getAddr().sin_addr.s_addr)
-        && (this->nodeTab[i].getAddr().sin_port == n.getAddr().sin_port)) {
-            ptr = &this->nodeTab[i];
+    if (!FLAG_6)
+    {
+        struct sockaddr_in* argv4 = (struct sockaddr_in*) n.getAddr();
+        for(i=0 ; i<size ; i++) {
+            struct sockaddr_in* adrv4 = (struct sockaddr_in*) this->nodeTab[i].getAddr();
+
+            if ((adrv4->sin_addr.s_addr == argv4->sin_addr.s_addr)
+            && (adrv4->sin_port == argv4->sin_port)) {
+                ptr = &this->nodeTab[i];
+            }
+        }
+    }
+    else
+    {
+        struct sockaddr_in6* argv6 = (struct sockaddr_in6*) n.getAddr();
+        for(i=0 ; i<size ; i++) {
+            struct sockaddr_in6* adrv6 = (struct sockaddr_in6*) this->nodeTab[i].getAddr();
+
+            //int cmp = compare_adresses6(&argv6->sin6_addr, &adrv6->sin6_addr);
+            int cmp = memcmp(&argv6->sin6_addr, &adrv6->sin6_addr, sizeof(struct in6_addr));
+            if ((!cmp)
+            && (adrv6->sin6_port == argv6->sin6_port)) {
+                ptr = &this->nodeTab[i];
+            }
         }
     }
 
@@ -311,14 +373,42 @@ void Orchestrateur::displayNodeVec(void) {
 
     cout << "******************************************************************\n" << endl;
 
-    for(i=0 ; i<size ; i++) {
-        cout << "@ = " << inet_ntoa(nodeTab[i].getAddr().sin_addr) << " ; Port = " << ntohs(nodeTab[i].getAddr().sin_port) << 
-        " ; Operation = " << nodeTab[i].getOp() << " ; Time = " << time(NULL) - nodeTab[i].lastHello << endl;
+
+    if (!FLAG_6)
+    {
+        for(i=0 ; i<size ; i++) {
+            struct sockaddr_in * adrv4 = (struct sockaddr_in*) nodeTab[i].getAddr();
+            cout << "@ = " << inet_ntoa(adrv4->sin_addr) << " ; Port = " << ntohs(adrv4->sin_port) << 
+            " ; Operation = " << nodeTab[i].getOp() << " ; Time = " << time(NULL) - nodeTab[i].lastHello << endl;
+        }
     }
+    else
+    {
+        for(i=0 ; i<size ; i++) {
+            struct sockaddr_in6 * adrv6 = (struct sockaddr_in6 *) nodeTab[i].getAddr();
+            char buffer_adresse[BUFFSIZE];
+            inet_ntop(AF_INET6, adrv6, buffer_adresse, sizeof(struct sockaddr_storage));
+            cout << "@ = " << buffer_adresse << " ; Port = " << ntohs(adrv6->sin6_port) << 
+            " ; Operation = " << nodeTab[i].getOp() << " ; Time = " << time(NULL) - nodeTab[i].lastHello << endl;
+        }
+    }
+    
 
     if (size == 0) {
         cout << "La liste de noeud est vide pour le moment !" << endl;
-        cout << "Pour ajouter un noeud -> @ = " << inet_ntoa(this->addr.sin_addr) << " Port -> " << this->port << endl;
+
+        if (!FLAG_6)
+        {
+            struct sockaddr_in * adrv4 = (struct sockaddr_in*) &(this->addr);
+            cout << "Pour ajouter un noeud -> @ = " << inet_ntoa(adrv4->sin_addr) << " Port -> " << this->port << endl;
+        }
+        else
+        {
+            struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) &this->addr;
+            char buffer_adresse[BUFFSIZE];
+            inet_ntop(AF_INET6, adrv6, buffer_adresse, sizeof(struct sockaddr_storage));
+            cout << "Pour ajouter un noeud -> @ = " << buffer_adresse << " Port -> " << this->port << endl;
+        }
     }
 
     cout << "\n******************************************************************\n" << endl;
@@ -342,7 +432,7 @@ void Orchestrateur::traiteCmd(string cmd, string calc) {
 
     while (i<size) {
         if ((op.compare(this->nodeTab[i].getOp()) == 0) && (this->nodeTab[i].getState())) { // On a trouvé le noeud
-            if ((sendto(socketFd, cmd.c_str(), cmd.size(), 0, (struct sockaddr*) &(this->nodeTab[i].addr), sizeof(struct sockaddr_in))) < 0) {
+            if ((sendto(socketFd, cmd.c_str(), cmd.size(), 0, (struct sockaddr*) &(this->nodeTab[i].addr), sizeof(struct sockaddr_storage))) < 0) {
 		        perror("send message ");
 		        exit(EXIT_FAILURE);
 	        }
@@ -350,7 +440,18 @@ void Orchestrateur::traiteCmd(string cmd, string calc) {
             this->nodeTab[i].setState(false);
             this->nodeTab[i].setCommand(calc);
 
-            cout << "Calulating on " << inet_ntoa(this->nodeTab[i].getAddr().sin_addr) << ":" << ntohs(this->nodeTab[i].getAddr().sin_port) << endl;
+            if (!FLAG_6)
+            {
+                struct sockaddr_in * adrv4 = (struct sockaddr_in*) this->nodeTab[i].getAddr();
+                cout << "Calulating on " << inet_ntoa(adrv4->sin_addr) << ":" << ntohs(adrv4->sin_port) << endl;
+            }
+            else
+            {
+                struct sockaddr_in6 * adrv6 = (struct sockaddr_in6*) this->nodeTab[i].getAddr();
+                char buffer_adresse[BUFFSIZE];
+                inet_ntop(AF_INET6, adrv6, buffer_adresse, sizeof(struct sockaddr_storage));
+                cout << "Calulating on " << buffer_adresse << ":" << ntohs(adrv6->sin6_port) << endl;
+            }
 
             break;
         }
@@ -378,7 +479,7 @@ void Orchestrateur::openTerm(void) {
     string buffer; // stocker une cmd de l'utilisateur
     string calc; // stocke un calcul sous la bonne syntaxe
 
-    struct sockaddr_in addrFound;
+    struct sockaddr_storage addrFound;
 
 /*******************************************************************************
  * ATTRIBUTION D'UNE @ POUR L'ORCHESTRATEUR *
@@ -393,7 +494,7 @@ void Orchestrateur::openTerm(void) {
     cout << "orchestrateur> " << flush;
 
     char msg[BUFFSIZE];
-    unsigned int addr_len = sizeof(struct sockaddr_in);
+    unsigned int addr_len = sizeof(struct sockaddr_storage);
 
     struct timeval tv;
     struct timeval tv_tmp;
@@ -479,6 +580,35 @@ void Orchestrateur::openTerm(void) {
 }
 
 int main (int argc, char **argv) {
+
+    if (argc != 1 && argc != 2)
+    {
+        cerr << "Usage: noeud [-v] [-6]" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    int option;
+    while ((option = getopt(argc, argv, "6")) != -1)
+    {
+        switch(option)
+        {
+            case '6':
+                FLAG_6 = true;
+                break;
+
+            default:
+                std::cerr << "Usage: orchestrateur [-6]" << std::endl;
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if (optind != argc)
+    {
+        std::cerr << "Usage: orchestrateur [-6]" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+
    Orchestrateur orchest;
    orchest.openTerm();
 
