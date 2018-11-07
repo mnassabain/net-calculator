@@ -1,8 +1,9 @@
 #include "orchestrateur.h"
 
-#define BUFFSIZE    1024
-#define STDINFD     0
-#define PORT        2080
+#define BUFFSIZE        1024
+#define STDINFD         0
+#define PORT            2080
+#define TEMPS_ATTENTE   10
 
 Node::Node() {
     command = "";
@@ -101,7 +102,7 @@ void Orchestrateur::gestionNoeud(struct sockaddr_in addr, string cmd) {
     Node n(addr, cmd);
     Node *res;
     if (((res = this->findNode(n)) != NULL)) {
-        if (res->getState()) { // Le noeud est sensé être disponible...
+       /* if (res->getState()) { // Le noeud est sensé être disponible...
 
             // On met à jour l'heure de son dernier hello
             res->lastHello = time(NULL);
@@ -121,6 +122,22 @@ void Orchestrateur::gestionNoeud(struct sockaddr_in addr, string cmd) {
             cout << endl << endl << "@" << inet_ntoa(res->getAddr().sin_addr) << ":" << ntohs(res->getAddr().sin_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
 
             cout << endl << "orchestrateur> " << flush;
+        } */
+
+        if (cmd[0] == ':') { // C'est un résultat !
+            // Fin d'un calcul !
+            cmd.erase(cmd.begin());
+
+            res->setState(true);
+            res->lastHello = time(NULL);
+
+            cout << endl << endl << "@" << inet_ntoa(res->getAddr().sin_addr) << ":" << ntohs(res->getAddr().sin_port) << " -> Résultat du calcul " << res->getCommand() << " = " << cmd << endl;
+
+            cout << endl << "orchestrateur> " << flush;
+        }
+        else { // C'est un hello
+            // On met à jour l'heure de son dernier hello
+            res->lastHello = time(NULL);
         }
     }
     else {
@@ -273,8 +290,10 @@ void Orchestrateur::updateAllNodes(void) {
         time_t cur_time = time(NULL);
         
         // Si cela fait plus de 10 sec que nous n'avons pas reçu de nouvelles...
-        if (((cur_time - this->nodeTab[i].lastHello) > 10) && this->nodeTab[i].getState()) {
+        if (((cur_time - this->nodeTab[i].lastHello) > TEMPS_ATTENTE)) {
+            cout << "\nLe noeud calculant " << this->nodeTab[i].getOp() << " a été supprimé " << endl;
             this->nodeTab.erase(this->nodeTab.begin() + i);
+            cout << "orchestrateur> " << flush;
         }
     }
 }
@@ -326,7 +345,7 @@ void Orchestrateur::traiteCmd(string cmd, string calc) {
             this->nodeTab[i].setState(false);
             this->nodeTab[i].setCommand(calc);
 
-            cout << "Caluling on " << inet_ntoa(this->nodeTab[i].getAddr().sin_addr) << ":" << ntohs(this->nodeTab[i].getAddr().sin_port) << endl;
+            cout << "Calulating on " << inet_ntoa(this->nodeTab[i].getAddr().sin_addr) << ":" << ntohs(this->nodeTab[i].getAddr().sin_port) << endl;
 
             break;
         }
