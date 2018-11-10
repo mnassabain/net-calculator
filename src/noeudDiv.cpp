@@ -136,7 +136,7 @@ class Noeud
 Noeud::Noeud()
 {
     /* Profile de forme "operation: nb_arguments" */
-    profile = "-:2";
+    profile = "/:2";
 
     if (FLAG_V)
     {
