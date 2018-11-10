@@ -26,7 +26,7 @@
 #define BUFFER_SIZE         128
 
 /* Le port du noeud et de l'orchestrateur respectivement */
-#define PORT_NOEUD          8003
+#define PORT_NOEUD          8001
 #define ORCHESTRATEUR_PORT  8000
 
 /* Le temps que le noeud attend pour envoyer son profil à l'orchestrateur */
@@ -45,6 +45,7 @@
 bool FLAG_V = false;
 bool FLAG_6 = false;
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //      STRUCTURE DU NOEUD
 
@@ -60,7 +61,8 @@ class Noeud
         int fonction(int arg1, int arg2);
 
         /* La fonction qui decode la commande et place les arguments */
-        void decoder_commande(std::string& message, int * arg1, int * arg2);
+        void decoder_commande(const std::string& message, int * arg1, 
+            int * arg2);
 
         /* Socket du noeud */
         int mon_socket;
@@ -74,7 +76,7 @@ class Noeud
         socklen_t adrlen_orchestrateur;
 
         /* Fonction qui envoie un message vers l'orchestrateur */
-        void envoyer_message(std::string& message);
+        void envoyer_message(const std::string& message);
 
         /* Se mettre en écoute pour recevoir un message */
         void ecouter();
@@ -92,6 +94,7 @@ class Noeud
 
         /* Identifiant du processus fils */
         pid_t pid_fils;
+
 
         /* Dernier message reçu de l'orchestrateur */
         std::string message;
@@ -136,7 +139,7 @@ class Noeud
 Noeud::Noeud()
 {
     /* Profile de forme "operation: nb_arguments" */
-    profile = "-:2";
+    profile = "+:2";
 
     if (FLAG_V)
     {
@@ -189,7 +192,7 @@ int Noeud::fonction(int arg1, int arg2)
     
     sleep(sleep_time);
 
-    return arg1 - arg2;
+    return arg1 + arg2;
 }
 
 
@@ -317,7 +320,7 @@ Noeud::~Noeud()
  * Envoie un message à l'orchestrateur
  * 
  */
-void Noeud::envoyer_message(std::string& message) 
+void Noeud::envoyer_message(const std::string& message) 
 {
     if (sendto(mon_socket, message.c_str(), message.size(), 0, 
         (struct sockaddr*) &adr_orchestrateur,
@@ -348,7 +351,8 @@ void Noeud::recevoir_message(int * arg1, int * arg2)
     if (FLAG_V)
     {
         print_time();
-        std::cout << "Message reçu de l'orchestrateur: \"" << message << "\"" << std::endl;
+        std::cout << "Message reçu de l'orchestrateur: \"" << message << "\"" 
+            << std::endl;
     }
 
     decoder_commande(message, arg1, arg2);
@@ -361,7 +365,7 @@ void Noeud::recevoir_message(int * arg1, int * arg2)
  * Decode la commande message et place les arguments
  * 
  */
-void Noeud::decoder_commande(std::string& message, int * arg1, int * arg2)
+void Noeud::decoder_commande(const std::string& message, int * arg1, int * arg2)
 {
     char c;
     std::stringstream stream(message);
@@ -446,7 +450,16 @@ void Noeud::ecouter()
 
                     /* vider l'entrée standard, tuer le fils et sortir */
                     while((getchar() != '\n'));
-                    kill(pid_fils, SIGKILL);
+                    if (kill(pid_fils, SIGKILL) == -1)
+                    {
+                        perror("kill");
+                        exit(EXIT_FAILURE);
+                    }
+                    if (wait(NULL) == -1)
+                    {
+                        perror("wait");
+                        exit(EXIT_FAILURE);
+                    }
                 }
             }
         }
