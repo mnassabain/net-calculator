@@ -222,7 +222,7 @@ int Orchestrateur::maxFd(void) {
     return max;
 }
 
-
+// Compare deux adresses IPv6 
 bool compare_adresses6(struct in6_addr * a, struct in6_addr * b)
 {
     int i;
@@ -323,7 +323,6 @@ Node* Orchestrateur::findNode(Node n) {
         for(i=0 ; i<size ; i++) {
             struct sockaddr_in6* adrv6 = (struct sockaddr_in6*) this->nodeTab[i].getAddr();
 
-            //int cmp = compare_adresses6(&argv6->sin6_addr, &adrv6->sin6_addr);
             int cmp = memcmp(&argv6->sin6_addr, &adrv6->sin6_addr, sizeof(struct in6_addr));
             if ((!cmp)
             && (adrv6->sin6_port == argv6->sin6_port)) {
@@ -343,7 +342,6 @@ void Orchestrateur::initFdSet(fd_set *set) {
 
     // Il ne faut pas oublier le fd de l'orch..
     FD_SET(this->socketFd, set);
-    cout << this->socketFd << " added" << endl;
 
     // On rajoute l'entrée std
     FD_SET(STDINFD, set);
@@ -359,6 +357,9 @@ void Orchestrateur::updateAllNodes(void) {
         // Si cela fait plus de 10 sec que nous n'avons pas reçu de nouvelles...
         if (((cur_time - this->nodeTab[i].lastHello) > TEMPS_ATTENTE)) {
             cout << "\nLe noeud calculant " << this->nodeTab[i].getOp() << " a été supprimé " << endl;
+            if (!this->nodeTab[i].getState()) {
+                cout << "Attention, le calcul " << this->nodeTab[i].getCommand() << " n'est plus en cours" << endl;
+            }
             this->nodeTab.erase(this->nodeTab.begin() + i);
             cout << "orchestrateur> " << flush;
         }
