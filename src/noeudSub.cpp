@@ -282,6 +282,7 @@ void Noeud::lancer_noeud()
 
         case 0:
             fils();
+            break;
         
         default:
             pere();
